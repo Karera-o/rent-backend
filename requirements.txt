@@ -1,0 +1,14 @@
+Django==5.0.*
+django-ninja-extra==0.22.*
+django-ninja-jwt==5.3.*
+psycopg2-binary==2.9.*
+pytest==8.3.*
+Pillow==10.2.*  # For image handling
+python-dotenv==1.0.*  # For environment variables
+stripe==7.13.*  # For payment processing
+email-validator==2.1.*  # For email validation
+django-cors-headers==4.3.*  # For CORS support
+django-redis==5.4.*  # For caching
+django-ratelimit==4.1.*  # For rate limiting
+django-allauth==0.65.*  # For social authentication
+requests==2.31.*  # For HTTP requests
