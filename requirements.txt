@@ -1,81 +1,14 @@
-annotated-types==0.7.0
-anyio==4.9.0
-asgiref==3.8.1
-Brotli==1.1.0
-certifi==2025.1.31
-cffi==1.17.1
-charset-normalizer==3.4.1
-click==8.1.8
-contextlib2==21.6.0
-cryptography==44.0.2
-cssselect2==0.8.0
-defusedxml==0.7.1
-Django==5.2
-django-allauth==65.7.0
-django-cors-headers==4.7.0
-django-ninja==1.4.0
-django-ninja-extra==0.22.9
-django-ninja-jwt==5.3.7
-djangorestframework==3.16.0
-djangorestframework_simplejwt==5.5.0
-dnspython==2.7.0
-drf-yasg==1.21.10
-email_validator==2.2.0
-et_xmlfile==2.0.0
-fonttools==4.57.0
-fpdf2==2.8.2
-gunicorn==23.0.0
-h11==0.14.0
-httpcore==1.0.7
-httpx==0.28.1
-httpx-sse==0.4.0
-idna==3.10
-inflection==0.5.1
-injector==0.22.0
-lxml==5.3.2
-markdown-it-py==3.0.0
-mcp==1.6.0
-mdurl==0.1.2
-numpy==2.2.4
-oauthlib==3.2.2
-openpyxl==3.1.5
-packaging==25.0
-pandas==2.2.3
-pillow==11.1.0
-pycparser==2.22
-pydantic==2.11.1
-pydantic-settings==2.8.1
-pydantic_core==2.33.0
-pydyf==0.11.0
-Pygments==2.19.1
-PyJWT==2.9.0
-pyphen==0.17.2
-python-dateutil==2.9.0.post0
-python-docx==1.1.2
-python-dotenv==1.1.0
-pytz==2025.2
-PyYAML==6.0.2
-requests==2.32.3
-requests-oauthlib==2.0.0
-rich==14.0.0
-shellingham==1.5.4
-six==1.17.0
-sniffio==1.3.1
-sqlparse==0.5.3
-sse-starlette==2.2.1
-starlette==0.46.1
-stripe==12.0.0
-tinycss2==1.4.0
-tinyhtml5==2.0.0
-tweepy==4.15.0
-typer==0.15.2
-typing-inspection==0.4.0
-typing_extensions==4.13.0
-tzdata==2025.2
-uritemplate==4.1.1
-urllib3==2.3.0
-uvicorn==0.34.0
-weasyprint==65.0
-webencodings==0.5.1
-whitenoise==6.9.0
-zopfli==0.2.3.post1
+Django==5.0.*
+django-ninja-extra==0.22.*
+django-ninja-jwt==5.3.*
+psycopg2-binary==2.9.*
+pytest==8.3.*
+Pillow==10.2.*  # For image handling
+python-dotenv==1.0.*  # For environment variables
+stripe==7.13.*  # For payment processing
+email-validator==2.1.*  # For email validation
+django-cors-headers==4.3.*  # For CORS support
+django-redis==5.4.*  # For caching
+django-ratelimit==4.1.*  # For rate limiting
+django-allauth==0.65.*  # For social authentication
+requests==2.31.*  # For HTTP requests
