@@ -33,6 +33,7 @@ staticfiles/
 venv/
 env/
 ENV/
+new_venv/
 
 # IDE
 .idea/
