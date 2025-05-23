@@ -67,7 +67,7 @@ class PropertyRepository:
 
     @staticmethod
     def search_properties(query: str = None, city: str = None, property_type: str = None,
-                          min_price: float = None, max_price: float = None,
+                          min_price: float = None, max_price: float = None, price_range: str = None,
                           bedrooms: int = None, bathrooms: float = None,
                           status: str = None, include_all_statuses: bool = False,
                           owner: User = None,
@@ -104,12 +104,31 @@ class PropertyRepository:
             # Handle property type filtering - allow case-insensitive matching
             filters &= Q(property_type__iexact=property_type)
 
-        if min_price is not None:
-            filters &= Q(price_per_night__gte=min_price)
+        # Handle price filtering
+        if price_range:
+            # Parse price range in format "min-max" (e.g., "0-100", "100-200", "1000-any")
+            price_parts = price_range.split('-')
+            if len(price_parts) == 2:
+                min_val, max_val = price_parts
 
-        if max_price is not None:
-            filters &= Q(price_per_night__lte=max_price)
+                # Set min price if it's a number
+                if min_val.isdigit():
+                    min_price_val = float(min_val)
+                    filters &= Q(price_per_night__gte=min_price_val)
 
+                # Set max price if it's a number and not "any"
+                if max_val.isdigit():
+                    max_price_val = float(max_val)
+                    filters &= Q(price_per_night__lte=max_price_val)
+        else:
+            # Use traditional min_price and max_price if price_range is not provided
+            if min_price is not None:
+                filters &= Q(price_per_night__gte=min_price)
+
+            if max_price is not None:
+                filters &= Q(price_per_night__lte=max_price)
+
+        # Handle bedrooms filtering (supports "X+" format from frontend)
         if bedrooms is not None:
             filters &= Q(bedrooms__gte=bedrooms)
 
@@ -135,7 +154,7 @@ class PropertyRepository:
 
     @staticmethod
     def count_properties(query: str = None, city: str = None, property_type: str = None,
-                         min_price: float = None, max_price: float = None,
+                         min_price: float = None, max_price: float = None, price_range: str = None,
                          bedrooms: int = None, bathrooms: float = None,
                          status: str = None, include_all_statuses: bool = False,
                          owner: User = None) -> int:
@@ -171,11 +190,29 @@ class PropertyRepository:
             # Handle property type filtering - allow case-insensitive matching
             filters &= Q(property_type__iexact=property_type)
 
-        if min_price is not None:
-            filters &= Q(price_per_night__gte=min_price)
+        # Handle price filtering
+        if price_range:
+            # Parse price range in format "min-max" (e.g., "0-100", "100-200", "1000-any")
+            price_parts = price_range.split('-')
+            if len(price_parts) == 2:
+                min_val, max_val = price_parts
 
-        if max_price is not None:
-            filters &= Q(price_per_night__lte=max_price)
+                # Set min price if it's a number
+                if min_val.isdigit():
+                    min_price_val = float(min_val)
+                    filters &= Q(price_per_night__gte=min_price_val)
+
+                # Set max price if it's a number and not "any"
+                if max_val.isdigit():
+                    max_price_val = float(max_val)
+                    filters &= Q(price_per_night__lte=max_price_val)
+        else:
+            # Use traditional min_price and max_price if price_range is not provided
+            if min_price is not None:
+                filters &= Q(price_per_night__gte=min_price)
+
+            if max_price is not None:
+                filters &= Q(price_per_night__lte=max_price)
 
         if bedrooms is not None:
             filters &= Q(bedrooms__gte=bedrooms)

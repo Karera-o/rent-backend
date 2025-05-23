@@ -71,7 +71,8 @@ class PropertySearchSchema(Schema):
     property_type: Optional[str] = None
     min_price: Optional[float] = None
     max_price: Optional[float] = None
-    bedrooms: Optional[int] = None
+    price_range: Optional[str] = None  # Format: "min-max" (e.g., "0-100", "100-200", "1000-any")
+    bedrooms: Optional[int] = None  # Can be used for "X+" format in frontend
     bathrooms: Optional[float] = None
     owner: Optional[str] = None  # Can be 'current' to filter by current user
 

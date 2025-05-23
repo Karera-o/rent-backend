@@ -73,6 +73,14 @@ class PropertyController:
         if include_all_statuses:
             search_params['include_all_statuses'] = True
 
+        # Process price_range if it exists
+        if 'price_range' in search_params and search_params['price_range']:
+            price_range = search_params['price_range']
+            # Keep price_range in search_params for the repository to handle
+
+        # Process bedrooms filter - it's already handled as gte in the repository
+        # The frontend sends values like "1", "2", etc. which are interpreted as "1+", "2+", etc.
+
         # Get total count
         total = self.property_service.count_properties(owner=current_user, **search_params)
 

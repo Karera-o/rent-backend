@@ -138,7 +138,15 @@ class PropertyService:
             page_size: Number of items per page
             include_all_images: Whether to include all images or just the primary image
                                Default is True for public property listings
-            **search_params: Additional search parameters
+            owner: The owner to filter by (if any)
+            **search_params: Additional search parameters including:
+                - query: Text search across title, description, address, city
+                - city: Filter by city
+                - property_type: Filter by property type
+                - price_range: Filter by price range in format "min-max" (e.g., "0-100", "100-200", "1000-any")
+                - min_price/max_price: Alternative price filtering
+                - bedrooms: Filter by minimum number of bedrooms (X+)
+                - bathrooms: Filter by minimum number of bathrooms
         """
         # Add pagination parameters
         properties = self.property_repository.search_properties(
@@ -152,6 +160,17 @@ class PropertyService:
     def count_properties(self, owner: User = None, **search_params) -> int:
         """
         Count properties matching the search criteria.
+
+        Args:
+            owner: The owner to filter by (if any)
+            **search_params: Additional search parameters including:
+                - query: Text search across title, description, address, city
+                - city: Filter by city
+                - property_type: Filter by property type
+                - price_range: Filter by price range in format "min-max" (e.g., "0-100", "100-200", "1000-any")
+                - min_price/max_price: Alternative price filtering
+                - bedrooms: Filter by minimum number of bedrooms (X+)
+                - bathrooms: Filter by minimum number of bathrooms
         """
         return self.property_repository.count_properties(owner=owner, **search_params)
 
