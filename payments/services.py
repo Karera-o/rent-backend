@@ -559,6 +559,13 @@ class PaymentService:
         Handle Stripe webhook events.
         """
         try:
+            # Convert string payload to bytes if necessary
+            if isinstance(payload, str):
+                payload = payload.encode('utf-8')
+                
+            logger.info(f"Constructing Stripe event with signature: {signature[:20]}...")
+            logger.info(f"Using webhook secret: {settings.STRIPE_WEBHOOK_SECRET[:10]}...")
+            
             event = stripe.Webhook.construct_event(
                 payload, signature, settings.STRIPE_WEBHOOK_SECRET
             )
@@ -583,6 +590,9 @@ class PaymentService:
         except ValueError as e:
             logger.error(f"Invalid webhook payload: {str(e)}")
             raise ValueError(f"Invalid webhook payload: {str(e)}")
+        except stripe.error.SignatureVerificationError as e:
+            logger.error(f"Invalid signature: {str(e)}")
+            raise ValueError(f"Invalid signature: {str(e)}")
 
     def _handle_payment_intent_succeeded(self, payment_intent: Dict[str, Any]) -> Dict[str, Any]:
         """

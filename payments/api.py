@@ -1,11 +1,13 @@
 from typing import List, Dict, Any
 from ninja_extra import api_controller, route
 from ninja_jwt.authentication import JWTAuth
-from django.http import HttpRequest
+from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 import logging
 import json
 import stripe
+from django.conf import settings
 
 from .services import PaymentService
 from .schemas import (
@@ -27,11 +29,14 @@ from house_rental.decorators import rate_limit
 
 logger = logging.getLogger('house_rental')
 
+# Create a global payment service instance for the webhook handler
+payment_service = PaymentService()
+
 # API Controller
 @api_controller("/payments", tags=["Payments"])
 class PaymentController:
     def __init__(self):
-        self.payment_service = PaymentService()
+        self.payment_service = payment_service
 
     @route.get("/public-key", response=StripePublicKeyResponse)
     def get_stripe_public_key(self, request: HttpRequest):
@@ -212,13 +217,16 @@ class PaymentController:
     def webhook(self, request: HttpRequest):
         """Handle Stripe webhook events"""
         try:
-            payload = request.body
-            signature = request.headers.get('stripe-signature')
-
-            if not signature:
+            payload = request.body.decode('utf-8')
+            sig_header = request.headers.get('Stripe-Signature', request.headers.get('stripe-signature'))
+            
+            logger.info(f"API webhook request received, signature: {sig_header[:20] if sig_header else 'None'}...")
+            logger.info(f"Using webhook secret: {settings.STRIPE_WEBHOOK_SECRET[:10]}...")
+            
+            if not sig_header:
                 return 400, {"message": "Missing Stripe signature"}
 
-            result = self.payment_service.handle_stripe_webhook(payload, signature)
+            result = self.payment_service.handle_stripe_webhook(payload, sig_header)
             return 200, result
         except ValueError as e:
             logger.error(f"Webhook error: {str(e)}")
@@ -287,3 +295,57 @@ class PaymentController:
         except ValueError as e:
             logger.warning(f"Guest payment intent creation failed: {str(e)}")
             return 400, {"message": str(e)}
+
+# Standalone webhook handler (similar to Flask example)
+@csrf_exempt
+@require_POST
+def stripe_webhook_handler(request):
+    """Handle Stripe webhook events"""
+    try:
+        payload = request.body.decode('utf-8')
+        sig_header = request.headers.get('Stripe-Signature', request.headers.get('stripe-signature'))
+        
+        logger.info(f"Webhook request received, signature: {sig_header[:20]}...")
+        logger.info(f"Using webhook secret: {settings.STRIPE_WEBHOOK_SECRET[:10]}...")
+        logger.info(f"Payload length: {len(payload)} bytes")
+        
+        if not sig_header:
+            logger.error("Missing Stripe signature header")
+            return JsonResponse({"error": "Missing Stripe signature header"}, status=400)
+        
+        try:
+            # Try with the correct header name
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            )
+            
+            # Log the event type
+            logger.info(f"Successfully constructed event of type: {event['type']}")
+            
+            # Handle different event types
+            if event['type'] == 'payment_intent.succeeded':
+                payment_intent = event['data']['object']
+                logger.info(f"Payment intent succeeded: {payment_intent['id']}")
+                result = payment_service._handle_payment_intent_succeeded(payment_intent)
+                logger.info(f"Handled payment_intent.succeeded: {result}")
+                return JsonResponse(result)
+            elif event['type'] == 'payment_intent.payment_failed':
+                payment_intent = event['data']['object']
+                result = payment_service._handle_payment_intent_failed(payment_intent)
+                return JsonResponse(result)
+            else:
+                logger.info(f"Unhandled event type: {event['type']}")
+                return JsonResponse({"status": "success", "message": f"Unhandled event type: {event['type']}"})
+                
+        except stripe.error.SignatureVerificationError as e:
+            logger.error(f"Invalid signature: {str(e)}")
+            logger.error(f"First 50 chars of signature: {sig_header[:50]}")
+            logger.error(f"First 50 chars of payload: {payload[:50]}")
+            return JsonResponse({"error": f"Invalid signature: {str(e)}"}, status=400)
+            
+    except ValueError as e:
+        logger.error(f"Invalid payload: {str(e)}")
+        return JsonResponse({"error": f"Invalid payload: {str(e)}"}, status=400)
+    except Exception as e:
+        logger.error(f"Error handling webhook: {str(e)}", exc_info=True)
+        return JsonResponse({"error": f"Error handling webhook: {str(e)}"}, status=500)

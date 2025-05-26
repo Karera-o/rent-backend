@@ -20,10 +20,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from .api import api
+from payments.api import stripe_webhook_handler
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', api.urls),
+    path('api/payments/webhook/', stripe_webhook_handler),  # Standalone webhook handler
     path('accounts/', include('allauth.urls')),
 ]
 

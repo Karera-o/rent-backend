@@ -288,7 +288,7 @@ if not os.path.exists(logs_dir):
 # Stripe settings
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_your_test_key')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_your_test_key')
-STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', 'whsec_your_webhook_secret')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', 'whsec_48c2c89e8d3490184ca405c8984aee3f8eea5d8c33b94700e98cfbe2bd916675')
 STRIPE_API_VERSION = os.environ.get('STRIPE_API_VERSION', '2023-10-16')
 STRIPE_CURRENCY = 'usd'
 
