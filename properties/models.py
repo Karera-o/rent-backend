@@ -56,14 +56,14 @@ class Property(models.Model):
         related_name='properties'
     )
 
-    # Location
-    address = models.CharField(max_length=255)
-    city = models.CharField(max_length=100)
-    state = models.CharField(max_length=100)
-    country = models.CharField(max_length=100)
+    # Location (Google Autocomplete fields)
+    address = models.CharField(max_length=255, help_text=_('Google Autocomplete Address'))
+    city = models.CharField(max_length=100, help_text=_('Google Autocomplete City'))
+    state = models.CharField(max_length=100, help_text=_('Google Autocomplete State'))
+    country = models.CharField(max_length=100, default='Rwanda', help_text=_('Google Autocomplete Country, always Rwanda'))
     zip_code = models.CharField(max_length=20)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text=_('Google Autocomplete Latitude'))
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text=_('Google Autocomplete Longitude'))
 
     # Details
     bedrooms = models.PositiveIntegerField(default=1)

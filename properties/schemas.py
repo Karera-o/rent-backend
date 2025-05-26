@@ -113,6 +113,7 @@ class PropertySummarySchema(Schema):
     status: str
     document_verification_status: Optional[str] = 'not_submitted'
     owner: Dict[str, Any]
+    address: str
     city: str
     state: str
     country: str

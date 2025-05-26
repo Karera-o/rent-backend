@@ -198,8 +198,9 @@ class PropertyAPITestCase(TestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['results']), 1)
-        self.assertEqual(response.data['results'][0]['title'], "Test Property")
+        data = json.loads(response.content)
+        self.assertEqual(len(data['results']), 1)
+        self.assertEqual(data['results'][0]['title'], "Test Property")
     
     def test_get_property_detail(self):
         """Test getting property detail."""
@@ -207,10 +208,11 @@ class PropertyAPITestCase(TestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['title'], "Test Property")
-        self.assertEqual(response.data['bedrooms'], 2)
-        self.assertEqual(response.data['bathrooms'], 1.5)
-        self.assertEqual(response.data['price_per_night'], '100.00')
+        data = json.loads(response.content)
+        self.assertEqual(data['title'], "Test Property")
+        self.assertEqual(data['bedrooms'], 2)
+        self.assertEqual(data['bathrooms'], '1.5')
+        self.assertEqual(data['price_per_night'], '100.00')
     
     def test_create_property(self):
         """Test creating a property."""
@@ -241,10 +243,11 @@ class PropertyAPITestCase(TestCase):
         response = self.client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['title'], 'New Property')
-        self.assertEqual(response.data['bedrooms'], 3)
-        self.assertEqual(response.data['bathrooms'], '2.0')
-        self.assertEqual(response.data['price_per_night'], '150.00')
+        data = json.loads(response.content)
+        self.assertEqual(data['title'], 'New Property')
+        self.assertEqual(data['bedrooms'], 3)
+        self.assertEqual(data['bathrooms'], '2.0')
+        self.assertEqual(data['price_per_night'], '150.00')
         
         # Verify database was updated
         self.assertEqual(Property.objects.count(), 2)
@@ -266,10 +269,55 @@ class PropertyAPITestCase(TestCase):
         response = self.client.put(url, data, format='json')
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['title'], 'Updated Property')
-        self.assertEqual(response.data['price_per_night'], '200.00')
+        data = json.loads(response.content)
+        self.assertEqual(data['title'], 'Updated Property')
+        self.assertEqual(data['price_per_night'], '200.00')
         
         # Verify database was updated
         updated_property = Property.objects.get(id=self.test_property.id)
         self.assertEqual(updated_property.title, 'Updated Property')
         self.assertEqual(updated_property.price_per_night, 200.00)
+
+    def test_search_properties_query(self):
+        """Test searching properties by query (title, address, city, state)."""
+        # Add another property with different fields
+        kigali_villa = self.property_service.create_property(
+            owner=self.agent_user,
+            title="Kigali Villa",
+            description="A beautiful villa in Kigali.",
+            property_type=Property.PropertyType.VILLA,
+            address="456 Kigali Road",
+            city="Kigali",
+            state="Kigali Province",
+            country="Rwanda",
+            zip_code="00001",
+            bedrooms=4,
+            bathrooms=3.0,
+            area=2000,
+            price_per_night=300.00,
+            has_wifi=True,
+            has_kitchen=True
+        )
+        # Ensure property is approved so it appears in search results
+        kigali_villa.status = Property.PropertyStatus.APPROVED
+        kigali_villa.save()
+        # Search by title
+        response = self.client.get('/api/properties/', {'query': 'Kigali Villa'})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(any(prop['title'] == 'Kigali Villa' for prop in data['results']))
+        # Search by address
+        response = self.client.get('/api/properties/', {'query': 'Kigali Road'})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(any(prop['address'] == '456 Kigali Road' for prop in data['results']))
+        # Search by city
+        response = self.client.get('/api/properties/', {'query': 'Kigali'})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(any('Kigali' in prop['city'] for prop in data['results']))
+        # Search by state
+        response = self.client.get('/api/properties/', {'query': 'Kigali Province'})
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(any('Kigali Province' in prop['state'] for prop in data['results']))

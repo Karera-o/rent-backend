@@ -314,6 +314,7 @@ class PropertyService:
                 'last_name': property_obj.owner.last_name,
                 'name': f"{property_obj.owner.first_name} {property_obj.owner.last_name}".strip() or property_obj.owner.username
             },
+            'address': property_obj.address,
             'city': property_obj.city,
             'state': property_obj.state,
             'country': property_obj.country,

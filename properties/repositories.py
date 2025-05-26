@@ -2,6 +2,7 @@ from typing import Optional, List
 from django.db.models import Q
 from .models import Property, PropertyImage, PropertyDocument, DocumentFeedback
 from users.models import User
+import logging
 
 class PropertyRepository:
     """
@@ -77,6 +78,10 @@ class PropertyRepository:
         """
         # Start with an empty filter
         filters = Q()
+        
+        # Debug logs
+        logger = logging.getLogger('house_rental')
+        logger.info(f"Search params - city: {city}, property_type: {property_type}")
 
         # Apply status filter
         if not include_all_statuses:
@@ -92,17 +97,22 @@ class PropertyRepository:
         if query:
             filters &= (
                 Q(title__icontains=query) |
-                Q(description__icontains=query) |
                 Q(address__icontains=query) |
-                Q(city__icontains=query)
+                Q(city__icontains=query) |
+                Q(state__icontains=query)
             )
 
         if city:
             filters &= Q(city__icontains=city)
+            logger.info(f"Added city filter: {city}")
 
         if property_type:
             # Handle property type filtering - allow case-insensitive matching
+            logger.info(f"Adding property_type filter: {property_type}")
             filters &= Q(property_type__iexact=property_type)
+            
+        # Log the final filter
+        logger.info(f"Final filters: {filters}")
 
         # Handle price filtering
         if price_range:
@@ -178,9 +188,9 @@ class PropertyRepository:
         if query:
             filters &= (
                 Q(title__icontains=query) |
-                Q(description__icontains=query) |
                 Q(address__icontains=query) |
-                Q(city__icontains=query)
+                Q(city__icontains=query) |
+                Q(state__icontains=query)
             )
 
         if city:

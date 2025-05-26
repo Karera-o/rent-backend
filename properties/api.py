@@ -56,7 +56,36 @@ class PropertyController:
     def search_properties(self, request: HttpRequest, search: PropertySearchSchema = None,
                          page: int = 1, page_size: int = 10, include_all_statuses: bool = False):
         """Search for properties with filters and pagination"""
-        search_params = search.dict(exclude_unset=True) if search else {}
+        # Initialize search parameters
+        search_params = {}
+        
+        # Debug log raw request parameters
+        logger.info(f"Raw GET parameters: {request.GET}")
+        
+        # Extract search parameters directly from request.GET for more reliable access
+        if 'city' in request.GET:
+            search_params['city'] = request.GET.get('city')
+        if 'property_type' in request.GET:
+            search_params['property_type'] = request.GET.get('property_type')
+        if 'query' in request.GET:
+            search_params['query'] = request.GET.get('query')
+        if 'bedrooms' in request.GET:
+            search_params['bedrooms'] = request.GET.get('bedrooms')
+        if 'bathrooms' in request.GET:
+            search_params['bathrooms'] = request.GET.get('bathrooms')
+        if 'price_range' in request.GET:
+            search_params['price_range'] = request.GET.get('price_range')
+        if 'min_price' in request.GET:
+            search_params['min_price'] = request.GET.get('min_price')
+        if 'max_price' in request.GET:
+            search_params['max_price'] = request.GET.get('max_price')
+            
+        # If search object is provided, update search_params with its values
+        if search:
+            search_dict = search.dict(exclude_unset=True)
+            search_params.update(search_dict)
+            
+        logger.info(f"Final search parameters: {search_params}")
 
         # Extract owner parameter from search_params
         owner = search_params.pop('owner', None) if search_params else None
