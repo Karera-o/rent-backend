@@ -1,0 +1,328 @@
+# Stripe Payment Integration Guide for House Rental Platform
+
+This document outlines all the payment-related APIs, the required requests, and the expected responses for the complete payment flow.
+
+## 1. Get Stripe Public Key
+
+**Endpoint:** `GET /api/payments/public-key`  
+**Authentication:** None  
+**Request:** None  
+**Response:**
+```json
+{
+  "publishable_key": "pk_test_XXXXXXXX"
+}
+```
+**Purpose:** The frontend needs this key to initialize the Stripe SDK.
+
+## 2. Create Payment Intent
+
+**Endpoint:** `POST /api/payments/intents`  
+**Authentication:** JWT required  
+**Request:**
+```json
+{
+  "booking_id": 123,
+  "setup_future_usage": "off_session" // Optional, for saving card
+}
+```
+**Response:**
+```json
+{
+  "id": 1,
+  "booking": {
+    "id": 123,
+    "property": {
+      "id": 456,
+      "title": "Beach House"
+    },
+    "check_in_date": "2025-06-01T12:00:00Z",
+    "check_out_date": "2025-06-07T12:00:00Z"
+  },
+  "amount": 750.00,
+  "currency": "usd",
+  "status": "requires_payment_method",
+  "stripe_payment_intent_id": "pi_XXXXXXXX",
+  "stripe_client_secret": "pi_XXXXXXXX_secret_YYYYYYYY",
+  "created_at": "2025-05-26T16:00:00Z"
+}
+```
+**Purpose:** Creates a payment intent for authenticated users.
+
+## 3. Alternative: Quick Intent (For Guest Users)
+
+**Endpoint:** `POST /api/payments/quick-intent`  
+**Authentication:** None  
+**Request:**
+```json
+{
+  "booking_id": 123
+}
+```
+**Response:**
+```json
+{
+  "client_secret": "pi_XXXXXXXX_secret_YYYYYYYY",
+  "amount": 750.00,
+  "id": "pi_XXXXXXXX"
+}
+```
+**Purpose:** Simplified payment intent creation without authentication.
+
+## 4. Alternative: Guest Payment Intent
+
+**Endpoint:** `POST /api/payments/guest-intents`  
+**Authentication:** None  
+**Request:**
+```json
+{
+  "booking_id": 123,
+  "setup_future_usage": null
+}
+```
+**Response:** Same as the regular payment intent response  
+**Purpose:** For guest users who want the full payment intent response.
+
+## 5. Create Payment Method (Optional - for saved cards)
+
+**Endpoint:** `POST /api/payments/methods`  
+**Authentication:** JWT required  
+**Request:**
+```json
+{
+  "payment_method_id": "pm_XXXXXXXX",
+  "set_as_default": true
+}
+```
+**Response:**
+```json
+{
+  "id": 1,
+  "type": "card",
+  "is_default": true,
+  "card_brand": "visa",
+  "card_last4": "4242",
+  "card_exp_month": 12,
+  "card_exp_year": 2026,
+  "stripe_payment_method_id": "pm_XXXXXXXX",
+  "created_at": "2025-05-26T16:00:00Z"
+}
+```
+**Purpose:** Save a payment method for future use.
+
+## 6. Get Payment Methods (Optional - for saved cards)
+
+**Endpoint:** `GET /api/payments/methods`  
+**Authentication:** JWT required  
+**Request:** None  
+**Response:**
+```json
+{
+  "count": 1,
+  "page": 1,
+  "page_size": 10,
+  "total_pages": 1,
+  "items": [
+    {
+      "id": 1,
+      "type": "card",
+      "is_default": true,
+      "card_brand": "visa",
+      "card_last4": "4242",
+      "card_exp_month": 12,
+      "card_exp_year": 2026,
+      "stripe_payment_method_id": "pm_XXXXXXXX",
+      "created_at": "2025-05-26T16:00:00Z"
+    }
+  ]
+}
+```
+**Purpose:** List saved payment methods.
+
+## 7. Confirm Payment
+
+**Endpoint:** `POST /api/payments/confirm`  
+**Authentication:** JWT required  
+**Request:**
+```json
+{
+  "payment_intent_id": "pi_XXXXXXXX",
+  "payment_method_id": "pm_XXXXXXXX", // Optional, if using a new card
+  "save_payment_method": true // Optional, to save the card
+}
+```
+**Response:**
+```json
+{
+  "id": 1,
+  "booking": {
+    "id": 123,
+    "property": {
+      "id": 456,
+      "title": "Beach House"
+    },
+    "check_in_date": "2025-06-01T12:00:00Z",
+    "check_out_date": "2025-06-07T12:00:00Z"
+  },
+  "amount": 750.00,
+  "currency": "usd",
+  "status": "succeeded",
+  "stripe_payment_intent_id": "pi_XXXXXXXX",
+  "stripe_client_secret": "pi_XXXXXXXX_secret_YYYYYYYY",
+  "created_at": "2025-05-26T16:00:00Z"
+}
+```
+**Purpose:** Confirm and complete the payment.
+
+## Complete Payment Flow for Frontend
+
+Here's the complete flow with code examples:
+
+### 1. Initialize Stripe on the frontend
+
+```javascript
+// Get the publishable key
+const { publishable_key } = await fetch('/api/payments/public-key').then(res => res.json());
+const stripe = Stripe(publishable_key);
+```
+
+### 2. Create a payment intent
+
+For authenticated users:
+```javascript
+const paymentIntent = await fetch('/api/payments/intents', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + jwtToken
+  },
+  body: JSON.stringify({
+    booking_id: bookingId
+  })
+}).then(res => res.json());
+
+const clientSecret = paymentIntent.stripe_client_secret;
+```
+
+For guest users (simpler method):
+```javascript
+const { client_secret } = await fetch('/api/payments/quick-intent', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    booking_id: bookingId
+  })
+}).then(res => res.json());
+```
+
+### 3. Collect card information
+
+```javascript
+// Create a card element
+const elements = stripe.elements();
+const cardElement = elements.create('card');
+cardElement.mount('#card-element');
+```
+
+### 4. Process the payment
+
+```javascript
+// When the user clicks "Pay"
+const { error, paymentIntent } = await stripe.confirmCardPayment(client_secret, {
+  payment_method: {
+    card: cardElement,
+    billing_details: {
+      name: 'User Name',
+      email: 'user@example.com'
+    }
+  }
+});
+
+if (error) {
+  // Show error to your customer
+  console.error(error.message);
+} else if (paymentIntent.status === 'succeeded') {
+  // Payment successful, show confirmation
+  // Optionally confirm on the backend
+  if (isAuthenticated) {
+    await fetch('/api/payments/confirm', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + jwtToken
+      },
+      body: JSON.stringify({
+        payment_intent_id: paymentIntent.id,
+        save_payment_method: saveCard
+      })
+    });
+  }
+  
+  // Redirect to success page
+  window.location.href = '/booking/success?id=' + bookingId;
+}
+```
+
+### 5. Save card for future payments (optional)
+
+```javascript
+// If the user wants to save their card
+const { paymentMethod } = await stripe.createPaymentMethod({
+  type: 'card',
+  card: cardElement,
+  billing_details: {
+    name: 'User Name',
+    email: 'user@example.com'
+  }
+});
+
+// Save the payment method to your backend
+await fetch('/api/payments/methods', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + jwtToken
+  },
+  body: JSON.stringify({
+    payment_method_id: paymentMethod.id,
+    set_as_default: true
+  })
+});
+```
+
+## Fixing Common Issues
+
+### Problem: "Missing value for stripe.confirmCardPayment intent secret: value should be a client_secret string"
+
+#### Solution:
+1. Make sure you're extracting just the `client_secret` string from the payment intent response
+2. Pass only this string to `stripe.confirmCardPayment()`, not the entire object
+3. For unauthenticated users, use the `/api/payments/quick-intent` endpoint which returns a simplified response
+
+### Example Fix:
+```javascript
+// INCORRECT
+const paymentIntent = await fetch('/api/payments/intents', { /* ... */ }).then(res => res.json());
+await stripe.confirmCardPayment(paymentIntent, { /* ... */ });
+
+// CORRECT
+const paymentIntent = await fetch('/api/payments/intents', { /* ... */ }).then(res => res.json());
+await stripe.confirmCardPayment(paymentIntent.stripe_client_secret, { /* ... */ });
+
+// ALTERNATIVE (for guest users)
+const { client_secret } = await fetch('/api/payments/quick-intent', { /* ... */ }).then(res => res.json());
+await stripe.confirmCardPayment(client_secret, { /* ... */ });
+```
+
+## Test Cards
+
+Use these test cards to simulate different payment scenarios:
+
+- **Successful payment**: 4242 4242 4242 4242
+- **Authentication required**: 4000 0025 0000 3155
+- **Payment declined**: 4000 0000 0000 9995
+
+For all test cards:
+- Any future expiration date
+- Any 3-digit CVC
+- Any postal code 

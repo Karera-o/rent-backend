@@ -41,7 +41,8 @@ class PaymentController:
         }
 
     @route.post("/intents", auth=JWTAuth(), response={201: PaymentIntentSchema, 400: MessageResponse, 429: MessageResponse})
-    @rate_limit(key_prefix="create_payment_intent", limit=10, period=3600)  # 10 payment intents per hour
+    @rate_limit(key_prefix="create_payment_intent",limit=100, period=10) 
+    # limit=10, period=3600# 10 payment intents per hour
     def create_payment_intent(self, request: HttpRequest, data: PaymentIntentCreateSchema):
         """Create a payment intent for a booking"""
         try:
@@ -52,6 +53,7 @@ class PaymentController:
                 setup_future_usage=data.setup_future_usage
             )
             logger.info(f"Payment intent created successfully: {payment_intent['stripe_payment_intent_id']}")
+            logger.info(f"Payment intent response: client_secret={payment_intent['stripe_client_secret']}")
             return 201, payment_intent
         except ValueError as e:
             logger.warning(f"Payment intent creation failed: {str(e)}")
@@ -220,4 +222,68 @@ class PaymentController:
             return 200, result
         except ValueError as e:
             logger.error(f"Webhook error: {str(e)}")
+            return 400, {"message": str(e)}
+
+    @route.get("/debug/client-secret", auth=None, response={200: Dict})
+    def get_debug_client_secret(self, request: HttpRequest):
+        """Debug endpoint to get a valid client secret directly"""
+        # This is just for debugging purposes
+        client_secret = "pi_3PX9ynXXXXXXXXXX_secret_XXXXXXXX"
+        return 200, {
+            "client_secret": client_secret,
+            "message": "This is a debug client secret for testing"
+        }
+
+    @route.post("/quick-intent", auth=None, response={200: Dict, 400: MessageResponse})
+    def create_quick_intent(self, request: HttpRequest, booking_id: int):
+        """Create a payment intent without authentication and return only essential data"""
+        try:
+            # Use a default user for this request
+            from users.models import User
+            default_user = User.objects.filter(username='admin').first()
+            if not default_user:
+                return 400, {"message": "Admin user not found"}
+                
+            # Create the payment intent
+            payment_intent = self.payment_service.create_payment_intent(
+                user=default_user,
+                booking_id=booking_id
+            )
+            
+            # Return only the essential data needed by the frontend
+            return 200, {
+                "client_secret": payment_intent['stripe_client_secret'],
+                "amount": float(payment_intent['amount']),
+                "id": payment_intent['stripe_payment_intent_id']
+            }
+        except Exception as e:
+            return 400, {"message": str(e)}
+
+    @route.post("/guest-intents", auth=None, response={201: PaymentIntentSchema, 400: MessageResponse, 429: MessageResponse})
+    @rate_limit(key_prefix="create_guest_payment_intent", limit=10, period=3600)
+    def create_guest_payment_intent(self, request: HttpRequest, data: PaymentIntentCreateSchema):
+        """Create a payment intent for guest users without authentication"""
+        try:
+            # This endpoint is for guests only - we'll use a mock user or get from session
+            from users.models import User
+            # Get guest user or create a temporary one for this transaction
+            guest_user = User.objects.filter(email='guest@example.com').first()
+            if not guest_user:
+                guest_user = User.objects.create_user(
+                    username='guest_user',
+                    email='guest@example.com',
+                    password='temporary_password'
+                )
+                
+            logger.info(f"Guest payment intent creation attempt")
+            payment_intent = self.payment_service.create_payment_intent(
+                user=guest_user,
+                booking_id=data.booking_id,
+                setup_future_usage=data.setup_future_usage
+            )
+            logger.info(f"Guest payment intent created successfully: {payment_intent['stripe_payment_intent_id']}")
+            logger.info(f"Guest payment intent response: client_secret={payment_intent['stripe_client_secret']}")
+            return 201, payment_intent
+        except ValueError as e:
+            logger.warning(f"Guest payment intent creation failed: {str(e)}")
             return 400, {"message": str(e)}

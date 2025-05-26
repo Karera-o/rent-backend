@@ -2,8 +2,11 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.conf import settings
+import logging
 
 from bookings.models import Booking
+
+logger = logging.getLogger('house_rental')
 
 
 class Payment(models.Model):
@@ -16,7 +19,7 @@ class Payment(models.Model):
         COMPLETED = 'completed', _('Completed')
         FAILED = 'failed', _('Failed')
         REFUNDED = 'refunded', _('Refunded')
-        CANCELLED = 'cancelled', _('Cancelled')
+        CANCELED = 'canceled', _('Canceled')
 
     # Relationships
     booking = models.ForeignKey(
@@ -55,6 +58,9 @@ class Payment(models.Model):
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
     completed_at = models.DateTimeField(_('Completed At'), blank=True, null=True)
+    failed_at = models.DateTimeField(_('Failed At'), blank=True, null=True)
+    refunded_at = models.DateTimeField(_('Refunded At'), blank=True, null=True)
+    canceled_at = models.DateTimeField(_('Cancelled At'), blank=True, null=True)
 
     class Meta:
         verbose_name = _('Payment')
@@ -71,17 +77,23 @@ class Payment(models.Model):
         return f"Payment {self.id} - {self.booking} - {self.amount} {self.currency}"
 
     def save(self, *args, **kwargs):
-        # If status is changed to completed, update completed_at timestamp
+        # Update timestamps based on status
         if self.status == self.PaymentStatus.COMPLETED and not self.completed_at:
             self.completed_at = timezone.now()
-
-            # Update booking payment status
-            if self.booking and not self.booking.is_paid:
-                self.booking.is_paid = True
-                self.booking.payment_date = timezone.now()
-                self.booking.payment_id = self.stripe_payment_intent_id
-                self.booking.save()
-
+        elif self.status == self.PaymentStatus.FAILED and not self.failed_at:
+            self.failed_at = timezone.now()
+        elif self.status == self.PaymentStatus.REFUNDED and not self.refunded_at:
+            self.refunded_at = timezone.now()
+        elif self.status == self.PaymentStatus.CANCELED and not self.canceled_at:
+            self.canceled_at = timezone.now()
+        
+        # If status is completed and booking is not None, update booking to paid
+        if self.status == self.PaymentStatus.COMPLETED and self.booking and not self.booking.is_paid:
+            self.booking.is_paid = True
+            self.booking.payment_date = timezone.now()
+            self.booking.payment_id = self.stripe_payment_intent_id
+            self.booking.save()
+            
         super().save(*args, **kwargs)
 
 

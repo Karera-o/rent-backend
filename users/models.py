@@ -29,6 +29,9 @@ class User(AbstractUser):
     google_id = models.CharField(max_length=255, blank=True, null=True)
     twitter_id = models.CharField(max_length=255, blank=True, null=True)
     
+    # Payment fields
+    stripe_customer_id = models.CharField(max_length=255, blank=True, null=True, verbose_name=_('Stripe Customer ID'))
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

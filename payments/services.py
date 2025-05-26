@@ -786,12 +786,14 @@ class PaymentService:
         Handle payment_method.detached webhook event.
         """
         try:
-            # Check if payment method exists in database
+            # Get payment method from database
             db_payment_method = self.payment_method_repository.get_payment_method_by_stripe_id(payment_method['id'])
-            if db_payment_method:
-                # Delete payment method from database
-                self.payment_method_repository.delete_payment_method(db_payment_method)
-                logger.info(f"Payment method deleted: {payment_method['id']}")
+            if not db_payment_method:
+                logger.warning(f"Payment method not found in database: {payment_method['id']}")
+                return {"status": "error", "message": "Payment method not found in database"}
+
+            # Delete payment method
+            self.payment_method_repository.delete_payment_method(db_payment_method)
 
             return {"status": "success", "message": "Payment method detached"}
         except Exception as e:
