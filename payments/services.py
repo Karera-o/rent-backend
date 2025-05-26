@@ -70,6 +70,29 @@ class PaymentService:
         if booking.is_paid:
             raise ValueError("This booking is already paid")
 
+        # Check if there's an existing active payment intent for this booking
+        existing_intent = self.payment_intent_repository.get_active_payment_intent_for_booking(booking.id)
+        if existing_intent:
+            logger.info(f"Using existing payment intent: {existing_intent.stripe_payment_intent_id} for booking {booking.id}")
+            return {
+                'id': existing_intent.id,
+                'booking': {
+                    'id': booking.id,
+                    'property': {
+                        'id': booking.property.id,
+                        'title': booking.property.title
+                    },
+                    'check_in_date': booking.check_in_date,
+                    'check_out_date': booking.check_out_date
+                },
+                'amount': existing_intent.amount,
+                'currency': existing_intent.currency,
+                'status': existing_intent.status,
+                'stripe_payment_intent_id': existing_intent.stripe_payment_intent_id,
+                'stripe_client_secret': existing_intent.stripe_client_secret,
+                'created_at': existing_intent.created_at
+            }
+
         # Check if Stripe API keys are configured
         use_mock_stripe = False
         if not settings.STRIPE_SECRET_KEY or settings.STRIPE_SECRET_KEY == 'sk_test_your_test_key' or 'XXXX' in settings.STRIPE_SECRET_KEY:
@@ -102,7 +125,9 @@ class PaymentService:
                 customer = self._get_or_create_stripe_customer(user)
                 customer_id = customer.id
 
-                # Create payment intent
+                # Create payment intent with idempotency key to prevent duplicates
+                idempotency_key = f"booking_{booking.id}_{user.id}"
+                
                 payment_intent_data = {
                     'amount': int(booking.total_price * 100),  # Convert to cents
                     'currency': settings.STRIPE_CURRENCY,
@@ -119,7 +144,11 @@ class PaymentService:
                 if setup_future_usage:
                     payment_intent_data['setup_future_usage'] = setup_future_usage
 
-                payment_intent = stripe.PaymentIntent.create(**payment_intent_data)
+                # Use idempotency key to prevent duplicate payment intents
+                payment_intent = stripe.PaymentIntent.create(
+                    **payment_intent_data,
+                    idempotency_key=idempotency_key
+                )
 
             # Save payment intent to database
             db_payment_intent = self.payment_intent_repository.create_payment_intent(
@@ -206,38 +235,66 @@ class PaymentService:
             else:
                 # Get the payment intent from Stripe
                 stripe_payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-
-                # If payment method is provided, attach it to the payment intent
-                if payment_method_id:
-                    # Attach payment method to customer if save_payment_method is True
-                    if save_payment_method:
-                        customer = self._get_or_create_stripe_customer(user)
-                        stripe.PaymentMethod.attach(
-                            payment_method_id,
-                            customer=customer.id
+                
+                # Check if the payment intent is already succeeded
+                if stripe_payment_intent.status == 'succeeded':
+                    logger.info(f"Payment intent {payment_intent_id} is already succeeded, no need to confirm again")
+                    
+                    # Check if we need to create a payment record
+                    if not db_payment_intent.payment:
+                        payment = self.payment_repository.create_payment(
+                            booking=booking,
+                            user=user,
+                            amount=db_payment_intent.amount,
+                            currency=db_payment_intent.currency,
+                            status=Payment.PaymentStatus.COMPLETED,
+                            stripe_payment_intent_id=payment_intent_id,
+                            stripe_payment_method_id=stripe_payment_intent.payment_method,
+                            stripe_customer_id=stripe_payment_intent.customer,
+                            receipt_email=user.email
                         )
-
-                        # Save payment method to database
-                        payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
-                        self._save_payment_method(user, payment_method, is_default=True)
-
-                    # Confirm the payment intent with the payment method
-                    stripe_payment_intent = stripe.PaymentIntent.confirm(
-                        payment_intent_id,
-                        payment_method=payment_method_id
-                    )
+                        
+                        # Update payment intent with payment
+                        db_payment_intent = self.payment_intent_repository.update_payment_intent(
+                            db_payment_intent,
+                            payment=payment,
+                            status='succeeded'
+                        )
+                        
+                        logger.info(f"Created payment record for already succeeded payment intent: {payment.id}")
                 else:
-                    # Confirm the payment intent without a payment method (using saved payment method)
-                    stripe_payment_intent = stripe.PaymentIntent.confirm(payment_intent_id)
+                    # If payment method is provided, attach it to the payment intent
+                    if payment_method_id:
+                        # Attach payment method to customer if save_payment_method is True
+                        if save_payment_method:
+                            customer = self._get_or_create_stripe_customer(user)
+                            stripe.PaymentMethod.attach(
+                                payment_method_id,
+                                customer=customer.id
+                            )
 
-            # Update payment intent in database
-            db_payment_intent = self.payment_intent_repository.update_payment_intent(
-                db_payment_intent,
-                status=stripe_payment_intent.status
-            )
+                            # Save payment method to database
+                            payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
+                            self._save_payment_method(user, payment_method, is_default=True)
 
-            # If payment is successful, create a payment record
-            if stripe_payment_intent.status == 'succeeded':
+                        # Confirm the payment intent with the payment method
+                        stripe_payment_intent = stripe.PaymentIntent.confirm(
+                            payment_intent_id,
+                            payment_method=payment_method_id
+                        )
+                    else:
+                        # Confirm the payment intent without a payment method (using saved payment method)
+                        stripe_payment_intent = stripe.PaymentIntent.confirm(payment_intent_id)
+
+            # Update payment intent in database if status changed
+            if db_payment_intent.status != stripe_payment_intent.status:
+                db_payment_intent = self.payment_intent_repository.update_payment_intent(
+                    db_payment_intent,
+                    status=stripe_payment_intent.status
+                )
+
+            # If payment is successful, create a payment record if it doesn't exist
+            if stripe_payment_intent.status == 'succeeded' and not db_payment_intent.payment:
                 payment = self.payment_repository.create_payment(
                     booking=booking,
                     user=user,

@@ -485,3 +485,29 @@ class PaymentIntentRepository:
 
         payment_intent.save()
         return payment_intent
+
+    @staticmethod
+    def get_active_payment_intent_for_booking(booking_id: int) -> Optional[PaymentIntent]:
+        """
+        Get an active payment intent for a booking.
+        
+        Active payment intents are those with statuses like 'requires_payment_method',
+        'requires_confirmation', 'requires_action', or 'processing'.
+        
+        This helps prevent duplicate payment intents for the same booking.
+        """
+        active_statuses = [
+            'requires_payment_method',
+            'requires_confirmation',
+            'requires_action',
+            'processing'
+        ]
+        
+        try:
+            # Get the most recent active payment intent for this booking
+            return PaymentIntent.objects.filter(
+                booking_id=booking_id,
+                status__in=active_statuses
+            ).order_by('-created_at').first()
+        except PaymentIntent.DoesNotExist:
+            return None

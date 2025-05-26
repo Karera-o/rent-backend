@@ -46,18 +46,18 @@ class PaymentController:
         }
 
     @route.post("/intents", auth=JWTAuth(), response={201: PaymentIntentSchema, 400: MessageResponse, 429: MessageResponse})
-    @rate_limit(key_prefix="create_payment_intent",limit=100, period=10) 
-    # limit=10, period=3600# 10 payment intents per hour
+    @rate_limit(key_prefix="create_payment_intent",limit=3, period=10) 
+    # Reduce the limit to 3 requests per 10 seconds to prevent rapid duplicate requests
     def create_payment_intent(self, request: HttpRequest, data: PaymentIntentCreateSchema):
         """Create a payment intent for a booking"""
         try:
-            logger.info(f"Payment intent creation attempt by user: {request.user.id}")
+            logger.info(f"Payment intent creation attempt by user: {request.user.id} for booking: {data.booking_id}")
             payment_intent = self.payment_service.create_payment_intent(
                 user=request.user,
                 booking_id=data.booking_id,
                 setup_future_usage=data.setup_future_usage
             )
-            logger.info(f"Payment intent created successfully: {payment_intent['stripe_payment_intent_id']}")
+            logger.info(f"Payment intent created/retrieved: {payment_intent['stripe_payment_intent_id']}")
             logger.info(f"Payment intent response: client_secret={payment_intent['stripe_client_secret']}")
             return 201, payment_intent
         except ValueError as e:
@@ -325,13 +325,15 @@ def stripe_webhook_handler(request):
             # Handle different event types
             if event['type'] == 'payment_intent.succeeded':
                 payment_intent = event['data']['object']
+                logger.info(f"Payment intent: {payment_intent}")
                 logger.info(f"Payment intent succeeded: {payment_intent['id']}")
                 result = payment_service._handle_payment_intent_succeeded(payment_intent)
                 logger.info(f"Handled payment_intent.succeeded: {result}")
                 return JsonResponse(result)
-            elif event['type'] == 'payment_intent.payment_failed':
+            elif event['type'] == 'payment_intent.failed':
                 payment_intent = event['data']['object']
                 result = payment_service._handle_payment_intent_failed(payment_intent)
+                logger.info(f"Handled payment_intent.failed: {result}")
                 return JsonResponse(result)
             else:
                 logger.info(f"Unhandled event type: {event['type']}")

@@ -9,7 +9,7 @@ from house_rental.schemas import MessageResponse, PaginatedResponse
 
 # Payment schemas
 class PaymentCreateSchema(Schema):
-    booking_id: int
+    payment_intent_id: str
     payment_method_id: Optional[str] = None
     save_payment_method: bool = False
 
