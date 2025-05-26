@@ -7,6 +7,25 @@ from decimal import Decimal
 from house_rental.schemas import MessageResponse, PaginatedResponse
 
 
+# User information schema for guest booking
+class GuestUserSchema(Schema):
+    full_name: str = Field(..., min_length=2, max_length=255)
+    email: EmailStr
+    phone_number: str = Field(..., min_length=5, max_length=20)
+    birthday: Optional[date] = None
+    
+    @validator('birthday')
+    def validate_age(cls, v):
+        if v:
+            from datetime import datetime
+            from dateutil.relativedelta import relativedelta
+            today = datetime.now().date()
+            age = relativedelta(today, v).years
+            if age < 18:
+                raise ValueError("User must be at least 18 years old")
+        return v
+
+
 # Booking schemas
 class BookingCreateSchema(Schema):
     property_id: int
@@ -23,6 +42,11 @@ class BookingCreateSchema(Schema):
         if 'check_in_date' in values and v <= values['check_in_date']:
             raise ValueError('Check-out date must be after check-in date')
         return v
+
+
+# Extended schema for guest booking (when user is not logged in)
+class GuestBookingCreateSchema(BookingCreateSchema):
+    user_info: GuestUserSchema
 
 
 class BookingUpdateSchema(Schema):

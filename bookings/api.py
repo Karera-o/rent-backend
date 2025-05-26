@@ -8,6 +8,7 @@ from .services import BookingService
 from .models import Booking
 from .schemas import (
     BookingCreateSchema,
+    GuestBookingCreateSchema,
     BookingUpdateSchema,
     BookingReviewCreateSchema,
     BookingFilterSchema,
@@ -29,9 +30,9 @@ class BookingController:
     @route.post("/", auth=JWTAuth(), response={201: BookingDetailSchema, 400: MessageResponse, 429: MessageResponse})
     @rate_limit(key_prefix="create_booking", limit=10, period=3600)  # 10 bookings per hour
     def create_booking(self, request: HttpRequest, data: BookingCreateSchema):
-        """Create a new booking"""
+        """Create a new booking for logged-in users"""
         try:
-            logger.info(f"Booking creation attempt by user: {request.user.id}")
+            logger.info(f"Booking creation attempt by logged-in user: {request.user.id}")
             booking = self.booking_service.create_booking(
                 tenant=request.user,
                 property_id=data.property_id,
@@ -47,6 +48,39 @@ class BookingController:
             return 201, self.booking_service.get_booking(booking.id)
         except ValueError as e:
             logger.warning(f"Booking creation failed: {str(e)}")
+            return 400, {"message": str(e)}
+            
+    @route.post("/guest", auth=None, response={201: BookingDetailSchema, 400: MessageResponse, 429: MessageResponse})
+    @rate_limit(key_prefix="create_guest_booking", limit=5, period=3600)  # 5 guest bookings per hour
+    def create_guest_booking(self, request: HttpRequest, data: GuestBookingCreateSchema):
+        """Create a new booking for non-logged-in users (guests)"""
+        try:
+            logger.info(f"Guest booking creation attempt from IP: {request.META.get('REMOTE_ADDR')}")
+            
+            # Prepare user info from the guest data
+            user_info = {
+                'full_name': data.user_info.full_name,
+                'email': data.user_info.email,
+                'phone_number': data.user_info.phone_number,
+                'birthday': data.user_info.birthday
+            }
+            
+            booking = self.booking_service.create_booking(
+                tenant=None,  # No logged-in tenant
+                property_id=data.property_id,
+                check_in_date=data.check_in_date,
+                check_out_date=data.check_out_date,
+                guests=data.guests,
+                guest_name=data.guest_name,
+                guest_email=data.guest_email,
+                guest_phone=data.guest_phone,
+                special_requests=data.special_requests,
+                user_info=user_info  # Pass user info for creating the inactive account
+            )
+            logger.info(f"Guest booking created successfully: {booking.id}")
+            return 201, self.booking_service.get_booking(booking.id)
+        except ValueError as e:
+            logger.warning(f"Guest booking creation failed: {str(e)}")
             return 400, {"message": str(e)}
 
     @route.get("/tenant", auth=JWTAuth(), response=PaginatedBookingResponse)

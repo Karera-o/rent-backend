@@ -9,6 +9,7 @@ from .repositories import BookingRepository
 from .models import Booking, BookingReview
 from properties.repositories import PropertyRepository
 from users.models import User
+from .strategies import BookingStrategyFactory, BookingStrategy
 
 logger = logging.getLogger('house_rental')
 
@@ -26,7 +27,7 @@ class BookingService:
 
     def create_booking(
         self,
-        tenant: User,
+        tenant: Optional[User],
         property_id: int,
         check_in_date: date,
         check_out_date: date,
@@ -34,15 +35,14 @@ class BookingService:
         guest_name: str,
         guest_email: str,
         guest_phone: str,
-        special_requests: Optional[str] = None
+        special_requests: Optional[str] = None,
+        user_info: Optional[Dict[str, Any]] = None
     ) -> Booking:
         """
         Create a new booking.
+        For logged in users, tenant parameter is required.
+        For non-logged in users, user_info parameter is required.
         """
-        # Validate tenant is a tenant
-        if tenant.role != User.Role.TENANT and tenant.role != User.Role.ADMIN:
-            raise ValueError("Only tenants and admins can create bookings")
-
         # Get the property
         property_obj = self.property_repository.get_property_by_id(property_id)
         if not property_obj:
@@ -72,10 +72,24 @@ class BookingService:
         # Calculate total price
         total_price = property_obj.price_per_night * duration
 
+        # Determine the appropriate booking strategy
+        strategy_factory = BookingStrategyFactory()
+        
+        if tenant:
+            # Logged-in user booking
+            strategy = strategy_factory.create_strategy(request_user=tenant)
+            booking_tenant = strategy.prepare_tenant()
+        elif user_info:
+            # Guest booking (non-logged-in user)
+            strategy = strategy_factory.create_strategy()
+            booking_tenant = strategy.prepare_tenant(**user_info)
+        else:
+            raise ValueError("Either tenant or user_info must be provided")
+
         # Create the booking
         booking = self.booking_repository.create_booking(
             property_obj=property_obj,
-            tenant=tenant,
+            tenant=booking_tenant,
             check_in_date=check_in_date,
             check_out_date=check_out_date,
             guests=guests,
@@ -86,7 +100,7 @@ class BookingService:
             special_requests=special_requests
         )
 
-        logger.info(f"Booking created: {booking.id} for property {property_obj.id} by tenant {tenant.id}")
+        logger.info(f"Booking created: {booking.id} for property {property_obj.id} by tenant {booking_tenant.id}")
 
         return booking
 

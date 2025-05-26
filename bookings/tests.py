@@ -5,6 +5,8 @@ from django.contrib.auth import get_user_model
 from datetime import date, timedelta
 from decimal import Decimal
 import json
+from rest_framework.test import APIClient
+from ninja_jwt.tokens import RefreshToken
 
 from properties.models import Property
 from .models import Booking, BookingReview
@@ -476,3 +478,120 @@ class BookingServiceTestCase(TestCase):
 # class BookingAPITestCase(TestCase):
 #     """Test case for the Booking API endpoints"""
 #     pass
+
+class GuestBookingTestCase(TestCase):
+    def setUp(self):
+        # Create a property owner
+        self.owner = User.objects.create_user(
+            username='owner',
+            email='owner@example.com',
+            password='password123',
+            role=User.Role.AGENT,
+            is_active=True
+        )
+        
+        # Create a property
+        self.property = Property.objects.create(
+            title='Test Property',
+            description='Test Description',
+            address='123 Test St',
+            city='Test City',
+            state='Test State',
+            zip_code='12345',
+            country='Test Country',
+            property_type=Property.PropertyType.HOUSE,
+            bedrooms=2,
+            bathrooms=2,
+            area=1000,  # Required field
+            price_per_night=100.00,
+            owner=self.owner,
+            status=Property.PropertyStatus.APPROVED
+        )
+        
+        # Set up API client
+        self.client = APIClient()
+
+    def test_guest_booking(self):
+        """Test creating a booking as a non-logged-in user"""
+        url = '/api/bookings/guest'
+        tomorrow = date.today() + timedelta(days=1)
+        next_week = date.today() + timedelta(days=7)
+        
+        data = {
+            'property_id': self.property.id,
+            'check_in_date': tomorrow.isoformat(),
+            'check_out_date': next_week.isoformat(),
+            'guests': 2,
+            'guest_name': 'Test Guest',
+            'guest_email': 'guest@example.com',
+            'guest_phone': '123-456-7890',
+            'special_requests': 'None',
+            'user_info': {
+                'full_name': 'Bryar Joyce',
+                'email': 'xacet@mailinator.com',
+                'phone_number': '+1 (259) 687-1426',
+                'birthday': '1978-03-02'
+            }
+        }
+        
+        response = self.client.post(url, json.dumps(data), content_type='application/json')
+        self.assertEqual(response.status_code, 201)
+        
+        # Verify a booking was created
+        self.assertEqual(Booking.objects.count(), 1)
+        booking = Booking.objects.first()
+        self.assertEqual(booking.property.id, self.property.id)
+        self.assertEqual(booking.guest_email, 'guest@example.com')
+        
+        # Verify a new inactive user was created
+        user = User.objects.get(email='xacet@mailinator.com')
+        self.assertFalse(user.is_active)
+        self.assertEqual(user.role, User.Role.TENANT)
+        self.assertEqual(user.first_name, 'Bryar')
+        self.assertEqual(user.last_name, 'Joyce')
+        self.assertEqual(user.phone_number, '+1 (259) 687-1426')
+        
+        # Verify the booking is associated with the inactive user
+        self.assertEqual(booking.tenant.id, user.id)
+        
+    def test_guest_booking_with_existing_email(self):
+        """Test creating a booking with an email that's already registered"""
+        # Create an active user with the same email
+        User.objects.create_user(
+            username='existing',
+            email='existing@example.com',
+            password='password123',
+            role=User.Role.TENANT,
+            is_active=True
+        )
+        
+        url = '/api/bookings/guest'
+        tomorrow = date.today() + timedelta(days=1)
+        next_week = date.today() + timedelta(days=7)
+        
+        data = {
+            'property_id': self.property.id,
+            'check_in_date': tomorrow.isoformat(),
+            'check_out_date': next_week.isoformat(),
+            'guests': 2,
+            'guest_name': 'Test Guest',
+            'guest_email': 'guest@example.com',
+            'guest_phone': '123-456-7890',
+            'special_requests': 'None',
+            'user_info': {
+                'full_name': 'Existing User',
+                'email': 'existing@example.com',
+                'phone_number': '123-456-7890',
+                'birthday': '1978-03-02'
+            }
+        }
+        
+        response = self.client.post(url, json.dumps(data), content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+        
+        # Verify no booking was created
+        self.assertEqual(Booking.objects.count(), 0)
+        
+        # Verify error message
+        response_data = json.loads(response.content)
+        self.assertIn("A user with this email already exists", response_data['message'])
