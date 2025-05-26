@@ -140,7 +140,12 @@ class PropertyRepository:
 
         # Handle bedrooms filtering (supports "X+" format from frontend)
         if bedrooms is not None:
-            filters &= Q(bedrooms__gte=bedrooms)
+            # Special case for 5+ bedrooms
+            if int(bedrooms) == 5:
+                filters &= Q(bedrooms__gte=bedrooms)
+            else:
+                # Exact match for 1, 2, 3, 4 bedrooms
+                filters &= Q(bedrooms=bedrooms)
 
         if bathrooms is not None:
             filters &= Q(bathrooms__gte=bathrooms)
@@ -225,7 +230,12 @@ class PropertyRepository:
                 filters &= Q(price_per_night__lte=max_price)
 
         if bedrooms is not None:
-            filters &= Q(bedrooms__gte=bedrooms)
+            # Special case for 5+ bedrooms
+            if int(bedrooms) == 5:
+                filters &= Q(bedrooms__gte=bedrooms)
+            else:
+                # Exact match for 1, 2, 3, 4 bedrooms
+                filters &= Q(bedrooms=bedrooms)
 
         if bathrooms is not None:
             filters &= Q(bathrooms__gte=bathrooms)
