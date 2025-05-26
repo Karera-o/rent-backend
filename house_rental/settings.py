@@ -225,6 +225,10 @@ if DEBUG:
         'http://localhost:3001',  # React frontend
         'http://127.0.0.1:3001',  # Django backend
     ]
+    # Additional     allowed origins from environment variable
+    additional_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
+    if additional_origins:
+        CORS_ALLOWED_ORIGINS.extend(additional_origins)
     # Allow credentials (cookies, authorization headers)
     CORS_ALLOW_CREDENTIALS = True
     # Allow all headers
