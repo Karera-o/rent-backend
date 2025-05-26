@@ -327,7 +327,7 @@ class UserService:
 
     def get_user_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
-        Get user profile data.
+        Get a user's profile.
         """
         user = self.user_repository.get_user_by_id(user_id)
         if not user:
@@ -343,7 +343,9 @@ class UserService:
             'phone_number': user.phone_number,
             'bio': user.bio,
             'profile_picture': user.profile_picture.url if user.profile_picture else None,
-            'date_joined': user.date_joined,
+            'birthday': user.birthday,
+            'is_adult': user.is_adult,
+            'date_joined': user.date_joined
         }
 
     def update_user_profile(self, user_id: int, **kwargs) -> Optional[User]:

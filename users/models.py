@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
+from datetime import date
+from dateutil.relativedelta import relativedelta
 
 class User(AbstractUser):
     """
@@ -21,6 +23,7 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
+    birthday = models.DateField(blank=True, null=True, verbose_name=_('Date of Birth'))
     
     # Social auth fields
     google_id = models.CharField(max_length=255, blank=True, null=True)
@@ -48,3 +51,14 @@ class User(AbstractUser):
     @property
     def is_tenant(self):
         return self.role == self.Role.TENANT
+        
+    @property
+    def is_adult(self):
+        """
+        Check if the user is at least 18 years old.
+        """
+        if not self.birthday:
+            return False
+        today = date.today()
+        age = relativedelta(today, self.birthday).years
+        return age >= 18

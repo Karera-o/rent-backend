@@ -3,6 +3,7 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from ninja_jwt.tokens import RefreshToken
+import json
 
 User = get_user_model()
 
@@ -53,23 +54,24 @@ class UserAPITestCase(TestCase):
             'role': User.Role.TENANT
         }
         
-        response = self.client.post(url, data, format='json')
+        response = self.client.post(url, json.dumps(data), content_type='application/json')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(User.objects.count(), 4)  # 3 from setup + 1 new
         self.assertEqual(User.objects.get(username='newuser').email, 'newuser@example.com')
     
     def test_user_login(self):
         """Test user login and token generation"""
-        url = '/api/token/'
+        url = '/api/token/pair'  # Using ninja-jwt endpoint instead of DRF endpoint
         data = {
             'username': 'tenant',
             'password': 'password123'
         }
         
-        response = self.client.post(url, data, format='json')
+        response = self.client.post(url, json.dumps(data), content_type='application/json')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
+        response_data = json.loads(response.content)
+        self.assertIn('access', response_data)
+        self.assertIn('refresh', response_data)
     
     def test_get_user_profile(self):
         """Test getting user profile"""
@@ -83,9 +85,10 @@ class UserAPITestCase(TestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['username'], 'tenant')
-        self.assertEqual(response.data['email'], 'tenant@example.com')
-        self.assertEqual(response.data['role'], User.Role.TENANT)
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data['username'], 'tenant')
+        self.assertEqual(response_data['email'], 'tenant@example.com')
+        self.assertEqual(response_data['role'], User.Role.TENANT)
     
     def test_update_user_profile(self):
         """Test updating user profile"""
@@ -102,12 +105,13 @@ class UserAPITestCase(TestCase):
             'phone_number': '1234567890'
         }
         
-        response = self.client.put(url, data, format='json')
+        response = self.client.put(url, json.dumps(data), content_type='application/json')
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['first_name'], 'Updated')
-        self.assertEqual(response.data['last_name'], 'User')
-        self.assertEqual(response.data['phone_number'], '1234567890')
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data['first_name'], 'Updated')
+        self.assertEqual(response_data['last_name'], 'User')
+        self.assertEqual(response_data['phone_number'], '1234567890')
         
         # Verify database was updated
         updated_user = User.objects.get(id=self.tenant_user.id)
@@ -129,18 +133,20 @@ class UserAPITestCase(TestCase):
             'new_password': 'newpassword123'
         }
         
-        response = self.client.post(url, data, format='json')
+        response = self.client.post(url, json.dumps(data), content_type='application/json')
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['message'], 'Password changed successfully')
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data['message'], 'Password changed successfully')
         
         # Verify password was changed by trying to login with new password
-        login_url = '/api/token/'
+        login_url = '/api/token/pair'  # Using ninja-jwt endpoint
         login_data = {
             'username': 'tenant',
             'password': 'newpassword123'
         }
         
-        login_response = self.client.post(login_url, login_data, format='json')
+        login_response = self.client.post(login_url, json.dumps(login_data), content_type='application/json')
         self.assertEqual(login_response.status_code, 200)
-        self.assertIn('access', login_response.data)
+        login_response_data = json.loads(login_response.content)
+        self.assertIn('access', login_response_data)

@@ -1,7 +1,8 @@
 from typing import Any, Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from ninja import Schema
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, validator
+from dateutil.relativedelta import relativedelta
 
 from .models import User
 from house_rental.schemas import MessageResponse
@@ -51,6 +52,16 @@ class UserRegistrationSchema(Schema):
     last_name: Optional[str] = None
     role: str = User.Role.TENANT
     phone_number: Optional[str] = None
+    birthday: Optional[date] = None
+    
+    @validator('birthday')
+    def validate_age(cls, value):
+        if value:
+            today = date.today()
+            age = relativedelta(today, value).years
+            if age < 18:
+                raise ValueError("User must be at least 18 years old")
+        return value
 
 class UserLoginSchema(Schema):
     username: str  # Can be username or email
@@ -66,6 +77,8 @@ class UserProfileSchema(Schema):
     phone_number: Optional[str] = None
     bio: Optional[str] = None
     profile_picture: Optional[str] = None
+    birthday: Optional[date] = None
+    is_adult: bool = False
     date_joined: Any
 
 class UserProfileUpdateSchema(Schema):
@@ -73,6 +86,16 @@ class UserProfileUpdateSchema(Schema):
     last_name: Optional[str] = None
     phone_number: Optional[str] = None
     bio: Optional[str] = None
+    birthday: Optional[date] = None
+    
+    @validator('birthday')
+    def validate_age(cls, value):
+        if value:
+            today = date.today()
+            age = relativedelta(today, value).years
+            if age < 18:
+                raise ValueError("User must be at least 18 years old")
+        return value
 
 class PasswordChangeSchema(Schema):
     old_password: str
@@ -88,6 +111,8 @@ class AdminUserListSchema(Schema):
     role: str
     is_active: bool
     date_joined: Any
+    birthday: Optional[date] = None
+    is_adult: bool = False
     properties_count: int = 0
     bookings_count: int = 0
 

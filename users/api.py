@@ -51,7 +51,8 @@ class UserController:
                 role=data.role,
                 first_name=data.first_name,
                 last_name=data.last_name,
-                phone_number=data.phone_number
+                phone_number=data.phone_number,
+                birthday=data.birthday
             )
             logger.info(f"User registered successfully: {user.id}")
             return 201, self.user_service.get_user_profile(user.id)
