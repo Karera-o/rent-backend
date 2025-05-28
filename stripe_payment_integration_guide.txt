@@ -172,7 +172,22 @@ This document outlines all the payment-related APIs, the required requests, and 
   "created_at": "2025-05-26T16:00:00Z"
 }
 ```
-**Purpose:** Confirm and complete the payment.
+**Purpose:** Confirm and complete the payment for authenticated users.
+
+## 8. Confirm Guest Payment (Optional)
+
+**Endpoint:** `POST /api/payments/guest/confirm`  
+**Authentication:** None (validates that payment intent belongs to guest user)  
+**Request:**
+```json
+{
+  "payment_intent_id": "pi_XXXXXXXX",
+  "payment_method_id": "pm_XXXXXXXX", // Optional
+  "save_payment_method": false // Always false for guests
+}
+```
+**Response:** Same as regular payment confirmation  
+**Purpose:** Optional manual confirmation for guest payments. Most guest payments are confirmed automatically via Stripe webhooks.
 
 ## Complete Payment Flow for Frontend
 

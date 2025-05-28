@@ -113,10 +113,37 @@ const { error, paymentIntent } = await stripe.confirmCardPayment(client_secret, 
 if (error) {
   // Show error to the customer
 } else if (paymentIntent.status === 'succeeded') {
-  // Payment successful, redirect to success page
+  // Payment successful - OPTIONAL: Confirm on backend for guest users
+  const confirmResponse = await fetch('/api/payments/guest/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      payment_intent_id: paymentIntent.id
+    })
+  });
+  
+  if (confirmResponse.ok) {
+    // Backend confirmation successful
+    console.log('Payment confirmed on backend');
+  }
+  
+  // Redirect to success page
   window.location.href = '/booking/success?id=' + bookingId;
 }
 ```
+
+### 4. Optional Backend Confirmation
+- **Endpoint**: `POST /api/payments/guest/confirm` ⚠️ **NEW: Guest-specific confirmation endpoint**
+- **Authentication**: None required (but validates that the payment intent belongs to a guest user)
+- **Request Data**:
+  ```json
+  {
+    "payment_intent_id": "pi_XXXXXXXX",
+    "payment_method_id": "pm_XXXXXXXX", // Optional
+    "save_payment_method": false // Always false for guests
+  }
+  ```
+- **Purpose**: Optional manual confirmation for guest payments (most guest payments are confirmed automatically via Stripe webhooks)
 
 ## Complete User Flow
 
@@ -127,8 +154,21 @@ if (error) {
 5. Guest proceeds to payment **using either `/api/payments/guest-intents` or `/api/payments/quick-intent`**
 6. System creates a payment intent for the booking
 7. Guest enters payment details and completes payment
-8. System marks the booking as paid
-9. Guest receives confirmation email with booking details
+8. **OPTIONAL**: Frontend can call `/api/payments/guest/confirm` for backend confirmation
+9. System marks the booking as paid (either via frontend confirmation or Stripe webhooks)
+10. Guest receives confirmation email with booking details
+
+## Payment Confirmation Options for Guests
+
+### Option 1: Automatic (Recommended)
+- Payment is confirmed automatically via Stripe webhooks
+- No additional API calls needed
+- More reliable and handles edge cases
+
+### Option 2: Manual Backend Confirmation
+- Frontend calls `/api/payments/guest/confirm` after successful Stripe payment
+- Provides immediate feedback to the user
+- Good for user experience but requires additional error handling
 
 ## Benefits of This Approach
 
@@ -137,12 +177,23 @@ if (error) {
 3. **Future Account Activation** - Guests can later activate their account if they wish
 4. **Clean Architecture** - Strategy pattern keeps code organized and maintainable
 5. **DRY Code** - Common logic is reused between guest and logged-in flows
+6. **Flexible Confirmation** - Both automatic and manual confirmation options available
 
 ## Security Considerations
 
 1. **Rate Limiting** - Guest booking and payment endpoints are rate-limited to prevent abuse
 2. **Validation** - All guest data is validated, including age verification (must be 18+)
 3. **Inactive Accounts** - Guest user accounts are created as inactive to prevent unauthorized access
+4. **Guest-Only Confirmation** - The guest confirmation endpoint validates that the payment intent belongs to an inactive user
+
+## API Endpoints Summary for Guests
+
+| Purpose | Endpoint | Auth | Notes |
+|---------|----------|------|-------|
+| Create Booking | `POST /api/bookings/guest` | None | Creates inactive user + booking |
+| Create Payment Intent (Full) | `POST /api/payments/guest-intents` | None | Full response with booking details |
+| Create Payment Intent (Simple) | `POST /api/payments/quick-intent` | None | Minimal response with client_secret |
+| Confirm Payment (Optional) | `POST /api/payments/guest/confirm` | None | Manual confirmation for guests |
 
 ## Common Issues and Troubleshooting
 
@@ -150,4 +201,6 @@ if (error) {
 
 2. **Missing user_info**: When making a guest booking, you must include the `user_info` field with full_name, email, phone_number, and birthday.
 
-3. **Missing client_secret**: When processing payments, make sure you're using the correct guest payment endpoint and properly extracting the client_secret from the response. 
+3. **404 Not Found on /api/payments/guest/confirm**: This was the original issue - the endpoint didn't exist. Now it's available for guest payment confirmations.
+
+4. **"This endpoint is only for guest payments" Error**: If you get this error, it means you're trying to confirm a payment for an active user account using the guest endpoint. Use `/api/payments/confirm` with JWT authentication instead. 

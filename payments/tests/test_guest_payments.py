@@ -201,4 +201,105 @@ class GuestPaymentStrategyTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         response_data = json.loads(response.content)
         self.assertEqual(response_data['id'], 'pi_test123')
-        self.assertEqual(response_data['client_secret'], 'pi_test123_secret_456') 
+        self.assertEqual(response_data['client_secret'], 'pi_test123_secret_456')
+
+    @patch('payments.services.PaymentService.confirm_payment')
+    def test_guest_payment_confirmation_api(self, mock_confirm_payment):
+        # Create a payment intent for the guest booking
+        payment_intent = PaymentIntent.objects.create(
+            booking=self.booking,
+            user=self.guest_tenant,
+            amount=self.booking.total_price,
+            currency='usd',
+            stripe_payment_intent_id='pi_test123',
+            stripe_client_secret='pi_test123_secret_456',
+            status='requires_payment_method'
+        )
+        
+        # Mock the service method response
+        mock_confirm_payment.return_value = {
+            'id': payment_intent.id,
+            'booking': {
+                'id': self.booking.id,
+                'property': {
+                    'id': self.property.id,
+                    'title': 'Test Property'
+                },
+                'check_in_date': self.booking.check_in_date,
+                'check_out_date': self.booking.check_out_date
+            },
+            'amount': self.booking.total_price,
+            'currency': 'usd',
+            'status': 'succeeded',
+            'stripe_payment_intent_id': 'pi_test123',
+            'requires_action': False,
+            'payment_intent_client_secret': None,
+            'created_at': payment_intent.created_at
+        }
+        
+        # Test the guest confirmation endpoint
+        url = '/api/payments/guest/confirm'
+        data = {
+            'payment_intent_id': 'pi_test123',
+            'payment_method_id': 'pm_test456',
+            'save_payment_method': False
+        }
+        
+        response = self.client.post(
+            url, 
+            json.dumps(data), 
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data['status'], 'succeeded')
+        self.assertEqual(response_data['stripe_payment_intent_id'], 'pi_test123')
+        
+        # Verify the service method was called with the guest user
+        mock_confirm_payment.assert_called_once_with(
+            user=self.guest_tenant,
+            payment_intent_id='pi_test123',
+            payment_method_id='pm_test456',
+            save_payment_method=False
+        )
+
+    def test_guest_confirmation_rejects_active_user_payment(self):
+        # Create an active user
+        active_user = User.objects.create_user(
+            username='activeuser',
+            email='active@example.com',
+            password='password123',
+            role=User.Role.TENANT,
+            birthday=date(1985, 1, 1),
+            is_active=True  # Active user
+        )
+        
+        # Create a payment intent for the active user
+        payment_intent = PaymentIntent.objects.create(
+            booking=self.booking,
+            user=active_user,  # Active user instead of guest
+            amount=self.booking.total_price,
+            currency='usd',
+            stripe_payment_intent_id='pi_test789',
+            stripe_client_secret='pi_test789_secret_abc',
+            status='requires_payment_method'
+        )
+        
+        # Try to confirm using guest endpoint
+        url = '/api/payments/guest/confirm'
+        data = {
+            'payment_intent_id': 'pi_test789',
+            'payment_method_id': 'pm_test456',
+            'save_payment_method': False
+        }
+        
+        response = self.client.post(
+            url, 
+            json.dumps(data), 
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        response_data = json.loads(response.content)
+        self.assertIn('This endpoint is only for guest payments', response_data['message']) 

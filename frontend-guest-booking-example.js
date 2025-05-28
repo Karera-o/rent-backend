@@ -154,6 +154,26 @@ const handlePayment = async (bookingId) => {
         document.getElementById('success-container').style.display = 'block';
         document.getElementById('booking-reference').textContent = bookingId;
         
+        // Optional: Confirm payment on backend for better tracking
+        try {
+          const confirmResponse = await fetch('/api/payments/guest/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              payment_intent_id: paymentIntent.id
+            })
+          });
+          
+          if (confirmResponse.ok) {
+            console.log('Payment confirmed on backend');
+          } else {
+            console.warn('Backend confirmation failed, but payment was successful');
+          }
+        } catch (error) {
+          console.warn('Backend confirmation error:', error);
+          // Don't fail the entire flow - payment was still successful
+        }
+        
         // Optional: Redirect to success page
         // window.location.href = `/booking/success?id=${bookingId}`;
       }

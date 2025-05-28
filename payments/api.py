@@ -261,6 +261,37 @@ class PaymentController:
         except ValueError as e:
             logger.warning(f"Guest payment intent creation failed: {str(e)}")
             return 400, {"message": str(e)}
+
+    @route.post("/guest/confirm", auth=None, response={200: Dict, 400: MessageResponse, 429: MessageResponse})
+    @rate_limit(key_prefix="confirm_guest_payment", limit=10, period=3600)
+    def confirm_guest_payment(self, request: HttpRequest, data: PaymentCreateSchema):
+        """Confirm a payment for a guest booking without authentication"""
+        try:
+            logger.info(f"Guest payment confirmation attempt for payment intent: {data.payment_intent_id}")
+            
+            # Get the payment intent from database to find the associated user
+            db_payment_intent = self.payment_service.payment_intent_repository.get_payment_intent_by_stripe_id(data.payment_intent_id)
+            if not db_payment_intent:
+                return 400, {"message": f"Payment intent with ID {data.payment_intent_id} not found"}
+            
+            # Verify this is a guest payment (inactive user)
+            if db_payment_intent.user.is_active:
+                return 400, {"message": "This endpoint is only for guest payments. Please use the authenticated confirmation endpoint."}
+            
+            # Use the guest user associated with the payment intent
+            payment_result = self.payment_service.confirm_payment(
+                user=db_payment_intent.user,
+                payment_intent_id=data.payment_intent_id,
+                payment_method_id=data.payment_method_id,
+                save_payment_method=False  # Guests don't save payment methods
+            )
+            
+            logger.info(f"Guest payment confirmation result: {payment_result['status']}")
+            return 200, payment_result
+            
+        except ValueError as e:
+            logger.warning(f"Guest payment confirmation failed: {str(e)}")
+            return 400, {"message": str(e)}
         
     @route.patch("/methods/{payment_method_id}", auth=JWTAuth(), response={200: PaymentMethodSchema, 400: MessageResponse, 404: MessageResponse})
     def update_payment_method(self, request: HttpRequest, payment_method_id: int, data: PaymentMethodUpdateSchema):
