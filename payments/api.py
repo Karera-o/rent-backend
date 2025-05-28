@@ -82,14 +82,7 @@ class PaymentController:
             logger.warning(f"Payment confirmation failed: {str(e)}")
             return 400, {"message": str(e)}
 
-    @route.get("/{payment_id}", auth=JWTAuth(), response={200: PaymentDetailSchema, 404: MessageResponse})
-    def get_payment(self, request: HttpRequest, payment_id: int):
-        """Get a payment by ID"""
-        payment = self.payment_service.get_payment(payment_id, request.user)
-        if not payment:
-            return 404, {"message": f"Payment with ID {payment_id} not found"}
-
-        return 200, payment
+    
 
     @route.get("/user", auth=JWTAuth(), response=PaginatedPaymentResponse)
     def get_user_payments(
@@ -151,7 +144,7 @@ class PaymentController:
             return 400, {"message": str(e)}
 
     @route.post("/methods", auth=JWTAuth(), response={201: PaymentMethodSchema, 400: MessageResponse, 429: MessageResponse})
-    @rate_limit(key_prefix="create_payment_method", limit=10, period=3600)  # 10 payment methods per hour
+    @rate_limit(key_prefix="create_payolivierkarera2020ment_method", limit=10, period=3600)  # 10 payment methods per hour
     def create_payment_method(self, request: HttpRequest, data: PaymentMethodCreateSchema):
         """Create a payment method for the current user"""
         try:
@@ -181,22 +174,7 @@ class PaymentController:
             page_size=page_size
         )
 
-    @route.patch("/methods/{payment_method_id}", auth=JWTAuth(), response={200: PaymentMethodSchema, 400: MessageResponse, 404: MessageResponse})
-    def update_payment_method(self, request: HttpRequest, payment_method_id: int, data: PaymentMethodUpdateSchema):
-        """Update a payment method"""
-        try:
-            payment_method = self.payment_service.update_payment_method(
-                user=request.user,
-                payment_method_id=payment_method_id,
-                set_as_default=data.set_as_default
-            )
-            logger.info(f"Payment method updated: {payment_method_id} by user {request.user.id}")
-            return 200, payment_method
-        except ValueError as e:
-            if "not found" in str(e):
-                return 404, {"message": str(e)}
-            return 400, {"message": str(e)}
-
+    
     @route.delete("/methods/{payment_method_id}", auth=JWTAuth(), response={204: None, 400: MessageResponse, 404: MessageResponse})
     def delete_payment_method(self, request: HttpRequest, payment_method_id: int):
         """Delete a payment method"""
@@ -243,19 +221,14 @@ class PaymentController:
         }
 
     @route.post("/quick-intent", auth=None, response={200: Dict, 400: MessageResponse})
-    def create_quick_intent(self, request: HttpRequest, booking_id: int):
+    def create_quick_intent(self, request: HttpRequest, data: PaymentIntentCreateSchema):
         """Create a payment intent without authentication and return only essential data"""
         try:
-            # Use a default user for this request
-            from users.models import User
-            default_user = User.objects.filter(username='admin').first()
-            if not default_user:
-                return 400, {"message": "Admin user not found"}
-                
-            # Create the payment intent
-            payment_intent = self.payment_service.create_payment_intent(
-                user=default_user,
-                booking_id=booking_id
+            logger.info(f"Quick payment intent creation attempt for booking: {data.booking_id}")
+            
+            # Use the guest payment intent method
+            payment_intent = self.payment_service.create_guest_payment_intent(
+                booking_id=data.booking_id
             )
             
             # Return only the essential data needed by the frontend
@@ -265,6 +238,7 @@ class PaymentController:
                 "id": payment_intent['stripe_payment_intent_id']
             }
         except Exception as e:
+            logger.error(f"Quick payment intent creation failed: {str(e)}")
             return 400, {"message": str(e)}
 
     @route.post("/guest-intents", auth=None, response={201: PaymentIntentSchema, 400: MessageResponse, 429: MessageResponse})
@@ -272,29 +246,47 @@ class PaymentController:
     def create_guest_payment_intent(self, request: HttpRequest, data: PaymentIntentCreateSchema):
         """Create a payment intent for guest users without authentication"""
         try:
-            # This endpoint is for guests only - we'll use a mock user or get from session
-            from users.models import User
-            # Get guest user or create a temporary one for this transaction
-            guest_user = User.objects.filter(email='guest@example.com').first()
-            if not guest_user:
-                guest_user = User.objects.create_user(
-                    username='guest_user',
-                    email='guest@example.com',
-                    password='temporary_password'
-                )
-                
-            logger.info(f"Guest payment intent creation attempt")
-            payment_intent = self.payment_service.create_payment_intent(
-                user=guest_user,
+            logger.info(f"Guest payment intent creation attempt for booking: {data.booking_id}")
+            
+            # Use the dedicated method for guest payment intents
+            payment_intent = self.payment_service.create_guest_payment_intent(
                 booking_id=data.booking_id,
                 setup_future_usage=data.setup_future_usage
             )
+            
             logger.info(f"Guest payment intent created successfully: {payment_intent['stripe_payment_intent_id']}")
-            logger.info(f"Guest payment intent response: client_secret={payment_intent['stripe_client_secret']}")
+            logger.info(f"Guest payment intent client_secret: {payment_intent['stripe_client_secret']}")
+            
             return 201, payment_intent
         except ValueError as e:
             logger.warning(f"Guest payment intent creation failed: {str(e)}")
             return 400, {"message": str(e)}
+        
+    @route.patch("/methods/{payment_method_id}", auth=JWTAuth(), response={200: PaymentMethodSchema, 400: MessageResponse, 404: MessageResponse})
+    def update_payment_method(self, request: HttpRequest, payment_method_id: int, data: PaymentMethodUpdateSchema):
+        """Update a payment method"""
+        try:
+            payment_method = self.payment_service.update_payment_method(
+                user=request.user,
+                payment_method_id=payment_method_id,
+                set_as_default=data.set_as_default
+            )
+            logger.info(f"Payment method updated: {payment_method_id} by user {request.user.id}")
+            return 200, payment_method
+        except ValueError as e:
+            if "not found" in str(e):
+                return 404, {"message": str(e)}
+            return 400, {"message": str(e)}
+        
+        
+    @route.get("/{payment_id}", auth=JWTAuth(), response={200: PaymentDetailSchema, 404: MessageResponse})
+    def get_payment(self, request: HttpRequest, payment_id: int):
+        """Get a payment by ID"""
+        payment = self.payment_service.get_payment(payment_id, request.user)
+        if not payment:
+            return 404, {"message": f"Payment with ID {payment_id} not found"}
+
+        return 200, payment
 
 # Standalone webhook handler (similar to Flask example)
 @csrf_exempt

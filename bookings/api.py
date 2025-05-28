@@ -9,6 +9,7 @@ from .models import Booking
 from .schemas import (
     BookingCreateSchema,
     GuestBookingCreateSchema,
+    GuestBookingAccessSchema,
     BookingUpdateSchema,
     BookingReviewCreateSchema,
     BookingFilterSchema,
@@ -51,7 +52,7 @@ class BookingController:
             return 400, {"message": str(e)}
             
     @route.post("/guest", auth=None, response={201: BookingDetailSchema, 400: MessageResponse, 429: MessageResponse})
-    @rate_limit(key_prefix="create_guest_booking", limit=5, period=3600)  # 5 guest bookings per hour
+    @rate_limit(key_prefix="create_guest_booking", limit=100, period=3600)  # 5 guest bookings per hour
     def create_guest_booking(self, request: HttpRequest, data: GuestBookingCreateSchema):
         """Create a new booking for non-logged-in users (guests)"""
         try:
@@ -143,12 +144,12 @@ class BookingController:
 
     @route.get("/{booking_id}", auth=JWTAuth(), response={200: BookingDetailSchema, 404: MessageResponse})
     def get_booking(self, request: HttpRequest, booking_id: int):
-        """Get a booking by ID"""
+        """Get a booking by ID for authenticated users"""
         booking = self.booking_service.get_booking(booking_id)
         if not booking:
             return 404, {"message": f"Booking with ID {booking_id} not found"}
 
-        # Check permissions
+        # Check permissions for authenticated users
         if (request.user.role == 'tenant' and request.user.id != booking['tenant']['id'] and
             request.user.role != 'admin' and request.user.role != 'agent'):
             return 404, {"message": f"Booking with ID {booking_id} not found"}
@@ -209,3 +210,18 @@ class BookingController:
             if "not found" in str(e):
                 return 404, {"message": str(e)}
             return 400, {"message": str(e)}
+
+    @route.post("/{booking_id}/guest-access", auth=None, response={200: BookingDetailSchema, 400: MessageResponse, 404: MessageResponse})
+    @rate_limit(key_prefix="guest_booking_access", limit=100, period=3600)  # 20 guest accesses per hour
+    def get_guest_booking(self, request: HttpRequest, booking_id: int, data: GuestBookingAccessSchema):
+        """Get a booking by ID for non-authenticated users using email verification"""
+        try:
+            booking = self.booking_service.get_booking_by_email(booking_id, data.guest_email)
+            if not booking:
+                return 404, {"message": f"Booking with ID {booking_id} not found or email doesn't match"}
+            
+            logger.info(f"Guest booking access successful for booking {booking_id}")
+            return 200, booking
+        except Exception as e:
+            logger.error(f"Guest booking access failed for booking {booking_id}: {str(e)}")
+            return 400, {"message": "An error occurred while accessing the booking"}

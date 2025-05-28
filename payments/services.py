@@ -12,6 +12,7 @@ from .models import Payment, PaymentMethod, PaymentIntent
 from bookings.repositories import BookingRepository
 from properties.repositories import PropertyRepository # Added import
 from users.models import User
+from .strategies import PaymentStrategyFactory
 
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -57,134 +58,21 @@ class PaymentService:
         """
         Create a payment intent for a booking.
         """
-        # Get the booking
-        booking = self.booking_repository.get_booking_by_id(booking_id)
-        if not booking:
-            raise ValueError(f"Booking with ID {booking_id} not found")
+        # Use the strategy pattern to create the payment intent
+        strategy = PaymentStrategyFactory.create_strategy(request_user=user)
+        return strategy.create_payment_intent(booking_id, setup_future_usage)
 
-        # Check if the user is the tenant of the booking
-        if booking.tenant.id != user.id and user.role != User.Role.ADMIN:
-            raise ValueError("You don't have permission to create a payment intent for this booking")
-
-        # Check if the booking is already paid
-        if booking.is_paid:
-            raise ValueError("This booking is already paid")
-
-        # Check if there's an existing active payment intent for this booking
-        existing_intent = self.payment_intent_repository.get_active_payment_intent_for_booking(booking.id)
-        if existing_intent:
-            logger.info(f"Using existing payment intent: {existing_intent.stripe_payment_intent_id} for booking {booking.id}")
-            return {
-                'id': existing_intent.id,
-                'booking': {
-                    'id': booking.id,
-                    'property': {
-                        'id': booking.property.id,
-                        'title': booking.property.title
-                    },
-                    'check_in_date': booking.check_in_date,
-                    'check_out_date': booking.check_out_date
-                },
-                'amount': existing_intent.amount,
-                'currency': existing_intent.currency,
-                'status': existing_intent.status,
-                'stripe_payment_intent_id': existing_intent.stripe_payment_intent_id,
-                'stripe_client_secret': existing_intent.stripe_client_secret,
-                'created_at': existing_intent.created_at
-            }
-
-        # Check if Stripe API keys are configured
-        use_mock_stripe = False
-        if not settings.STRIPE_SECRET_KEY or settings.STRIPE_SECRET_KEY == 'sk_test_your_test_key' or 'XXXX' in settings.STRIPE_SECRET_KEY:
-            logger.warning("Using mock Stripe implementation because API keys are not properly configured")
-            use_mock_stripe = True
-
-        try:
-            if use_mock_stripe:
-                # Mock Stripe customer and payment intent for testing
-                customer_id = f"cus_mock_{user.id}"
-                payment_intent_id = f"pi_mock_{booking.id}_{int(timezone.now().timestamp())}"
-                client_secret = f"{payment_intent_id}_secret_{user.id}"
-
-                # Create a mock payment intent object
-                class MockPaymentIntent:
-                    def __init__(self, id, client_secret, status):
-                        self.id = id
-                        self.client_secret = client_secret
-                        self.status = status
-
-                payment_intent = MockPaymentIntent(
-                    id=payment_intent_id,
-                    client_secret=client_secret,
-                    status='requires_payment_method'
-                )
-
-                logger.info(f"Created mock payment intent: {payment_intent_id}")
-            else:
-                # Get or create Stripe customer
-                customer = self._get_or_create_stripe_customer(user)
-                customer_id = customer.id
-
-                # Create payment intent with idempotency key to prevent duplicates
-                idempotency_key = f"booking_{booking.id}_{user.id}"
-                
-                payment_intent_data = {
-                    'amount': int(booking.total_price * 100),  # Convert to cents
-                    'currency': settings.STRIPE_CURRENCY,
-                    'customer': customer_id,
-                    'metadata': {
-                        'booking_id': booking.id,
-                        'user_id': user.id,
-                        'property_id': booking.property.id
-                    },
-                    'description': f"Payment for booking {booking.id} - {booking.property.title}",
-                }
-
-                # Add setup_future_usage if provided
-                if setup_future_usage:
-                    payment_intent_data['setup_future_usage'] = setup_future_usage
-
-                # Use idempotency key to prevent duplicate payment intents
-                payment_intent = stripe.PaymentIntent.create(
-                    **payment_intent_data,
-                    idempotency_key=idempotency_key
-                )
-
-            # Save payment intent to database
-            db_payment_intent = self.payment_intent_repository.create_payment_intent(
-                booking=booking,
-                user=user,
-                amount=booking.total_price,
-                currency=settings.STRIPE_CURRENCY,
-                stripe_payment_intent_id=payment_intent.id,
-                stripe_client_secret=payment_intent.client_secret,
-                status=payment_intent.status
-            )
-
-            logger.info(f"Payment intent created: {payment_intent.id} for booking {booking.id} by user {user.id}")
-
-            return {
-                'id': db_payment_intent.id,
-                'booking': {
-                    'id': booking.id,
-                    'property': {
-                        'id': booking.property.id,
-                        'title': booking.property.title
-                    },
-                    'check_in_date': booking.check_in_date,
-                    'check_out_date': booking.check_out_date
-                },
-                'amount': booking.total_price,
-                'currency': settings.STRIPE_CURRENCY,
-                'status': payment_intent.status,
-                'stripe_payment_intent_id': payment_intent.id,
-                'stripe_client_secret': payment_intent.client_secret,
-                'created_at': db_payment_intent.created_at
-            }
-
-        except stripe.error.StripeError as e:
-            logger.error(f"Stripe error creating payment intent: {str(e)}")
-            raise ValueError(f"Error creating payment intent: {str(e)}")
+    def create_guest_payment_intent(
+        self,
+        booking_id: int,
+        setup_future_usage: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a payment intent for a guest booking.
+        """
+        # Use the guest strategy to create the payment intent
+        strategy = PaymentStrategyFactory.create_strategy(request_user=None)
+        return strategy.create_payment_intent(booking_id, setup_future_usage)
 
     def confirm_payment(
         self,
@@ -201,9 +89,15 @@ class PaymentService:
         if not db_payment_intent:
             raise ValueError(f"Payment intent with ID {payment_intent_id} not found")
 
-        # Check if the user is the owner of the payment intent
+        # Check if the user is the owner of the payment intent or an admin
+        # For guest payments, we allow confirmation without strict user checking
+        is_guest_payment = False
         if db_payment_intent.user.id != user.id and user.role != User.Role.ADMIN:
-            raise ValueError("You don't have permission to confirm this payment intent")
+            # Check if this is a guest payment by looking at the booking tenant
+            if db_payment_intent.booking and db_payment_intent.booking.tenant and not db_payment_intent.booking.tenant.is_active:
+                is_guest_payment = True
+            else:
+                raise ValueError("You don't have permission to confirm this payment intent")
 
         # Get the booking
         booking = db_payment_intent.booking
@@ -235,7 +129,7 @@ class PaymentService:
             else:
                 # Get the payment intent from Stripe
                 stripe_payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-                
+
                 # Check if the payment intent is already succeeded
                 if stripe_payment_intent.status == 'succeeded':
                     logger.info(f"Payment intent {payment_intent_id} is already succeeded, no need to confirm again")
@@ -295,16 +189,21 @@ class PaymentService:
 
             # If payment is successful, create a payment record if it doesn't exist
             if stripe_payment_intent.status == 'succeeded' and not db_payment_intent.payment:
+                # Use the booking tenant's email for receipt if this is a guest payment
+                receipt_email = user.email
+                if is_guest_payment and booking and booking.tenant:
+                    receipt_email = booking.tenant.email or booking.guest_email
+                
                 payment = self.payment_repository.create_payment(
                     booking=booking,
-                    user=user,
+                    user=db_payment_intent.user,  # Use the original user from the payment intent
                     amount=db_payment_intent.amount,
                     currency=db_payment_intent.currency,
                     status=Payment.PaymentStatus.COMPLETED,
                     stripe_payment_intent_id=payment_intent_id,
                     stripe_payment_method_id=stripe_payment_intent.payment_method,
                     stripe_customer_id=stripe_payment_intent.customer,
-                    receipt_email=user.email
+                    receipt_email=receipt_email
                 )
 
                 # Update payment intent with payment
@@ -313,7 +212,7 @@ class PaymentService:
                     payment=payment
                 )
 
-                logger.info(f"Payment successful: {payment.id} for booking {booking.id} by user {user.id}")
+                logger.info(f"Payment successful: {payment.id} for booking {booking.id} by user {db_payment_intent.user.id}")
 
             return {
                 'id': db_payment_intent.id,

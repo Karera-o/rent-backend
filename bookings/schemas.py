@@ -49,6 +49,10 @@ class GuestBookingCreateSchema(BookingCreateSchema):
     user_info: GuestUserSchema
 
 
+class GuestBookingAccessSchema(Schema):
+    guest_email: EmailStr
+
+
 class BookingUpdateSchema(Schema):
     status: Optional[str] = None
     is_paid: Optional[bool] = None

@@ -576,3 +576,25 @@ class BookingService:
 
         # Delete the booking
         return self.booking_repository.delete_booking(booking)
+
+    def get_booking_by_email(self, booking_id: int, guest_email: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a booking by ID and guest email for non-authenticated access.
+        This allows guests to access their booking details using their email.
+        """
+        # Get booking from database
+        booking = self.booking_repository.get_booking_by_id(booking_id)
+        if not booking:
+            return None
+
+        # Verify the email matches the booking's guest email
+        if booking.guest_email.lower() != guest_email.lower():
+            logger.warning(f"Email mismatch for booking {booking_id}: {guest_email} vs {booking.guest_email}")
+            return None
+
+        # Format the booking data
+        booking_data = self._format_booking_detail(booking)
+
+        logger.info(f"Guest booking access: {booking_id} for email {guest_email}")
+
+        return booking_data
