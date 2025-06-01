@@ -4,6 +4,8 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 from datetime import date, timedelta
+import os
+from unittest.mock import patch
 
 from properties.models import Property
 from bookings.models import Booking
@@ -82,9 +84,36 @@ class GuestBookingAccessTestCase(TestCase):
         self.assertEqual(booking_data['guest_email'], 'guest@example.com')
         self.assertEqual(booking_data['guest_name'], 'John Doe')
 
+    def test_guest_booking_confirmation_success(self):
+        """Test successful guest booking confirmation with correct email"""
+        # Test the service method directly
+        with patch.dict(os.environ, {'REPLY_TO_EMAIL': 'test@example.com'}):
+            booking_data = self.booking_service.get_guest_booking_confirmation(
+                self.booking.id, 
+                'guest@example.com'
+            )
+        
+        self.assertIsNotNone(booking_data)
+        self.assertEqual(booking_data['first_name'], 'John')
+        self.assertEqual(booking_data['property_name'], 'Test Property')
+        self.assertEqual(booking_data['property_id'], self.property.id)
+        self.assertEqual(booking_data['guest_email'], 'guest@example.com')
+        self.assertEqual(booking_data['guest_count'], 2)
+        self.assertEqual(booking_data['booking_id'], self.booking.id)
+        self.assertEqual(booking_data['nights'], 2)  # 3 days - 1 day = 2 nights
+
     def test_guest_booking_access_wrong_email(self):
         """Test guest booking access with wrong email"""
         booking_data = self.booking_service.get_booking_by_email(
+            self.booking.id, 
+            'wrong@example.com'
+        )
+        
+        self.assertIsNone(booking_data)
+
+    def test_guest_booking_confirmation_wrong_email(self):
+        """Test guest booking confirmation with wrong email"""
+        booking_data = self.booking_service.get_guest_booking_confirmation(
             self.booking.id, 
             'wrong@example.com'
         )
@@ -101,9 +130,28 @@ class GuestBookingAccessTestCase(TestCase):
         self.assertIsNotNone(booking_data)
         self.assertEqual(booking_data['id'], self.booking.id)
 
+    def test_guest_booking_confirmation_case_insensitive(self):
+        """Test guest booking confirmation with different case email"""
+        booking_data = self.booking_service.get_guest_booking_confirmation(
+            self.booking.id, 
+            'GUEST@EXAMPLE.COM'
+        )
+        
+        self.assertIsNotNone(booking_data)
+        self.assertEqual(booking_data['first_name'], 'John')
+
     def test_guest_booking_access_nonexistent_booking(self):
         """Test guest booking access with non-existent booking ID"""
         booking_data = self.booking_service.get_booking_by_email(
+            99999, 
+            'guest@example.com'
+        )
+        
+        self.assertIsNone(booking_data)
+
+    def test_guest_booking_confirmation_nonexistent_booking(self):
+        """Test guest booking confirmation with non-existent booking ID"""
+        booking_data = self.booking_service.get_guest_booking_confirmation(
             99999, 
             'guest@example.com'
         )
@@ -125,8 +173,11 @@ class GuestBookingAccessTestCase(TestCase):
         
         self.assertEqual(response.status_code, 200)
         response_data = response.json()
-        self.assertEqual(response_data['id'], self.booking.id)
+        self.assertEqual(response_data['first_name'], 'John')
+        self.assertEqual(response_data['property_name'], 'Test Property')
+        self.assertEqual(response_data['property_id'], self.property.id)
         self.assertEqual(response_data['guest_email'], 'guest@example.com')
+        self.assertEqual(response_data['booking_id'], self.booking.id)
 
     def test_guest_booking_api_access_wrong_email(self):
         """Test guest booking API access with wrong email"""

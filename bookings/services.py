@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from django.core.cache import cache
 from django.conf import settings
 from django.utils import timezone
+from decimal import Decimal
 
 from .repositories import BookingRepository
 from .models import Booking, BookingReview
@@ -598,3 +599,80 @@ class BookingService:
         logger.info(f"Guest booking access: {booking_id} for email {guest_email}")
 
         return booking_data
+
+    def get_guest_booking_confirmation(self, booking_id: int, guest_email: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a guest booking confirmation by ID and email in a custom format.
+        This provides a simplified response for guest access confirmation.
+        """
+        # Get booking from database
+        booking = self.booking_repository.get_booking_by_id(booking_id)
+        if not booking:
+            return None
+
+        # Verify the email matches the booking's guest email
+        if booking.guest_email.lower() != guest_email.lower():
+            logger.warning(f"Email mismatch for booking {booking_id}: {guest_email} vs {booking.guest_email}")
+            return None
+            
+        # Get the first name
+        first_name = booking.guest_name.split(' ')[0] if booking.guest_name else ""
+        
+        # Calculate nights
+        nights = booking.get_duration_days()
+        
+        # Estimate taxes (for demonstration - adjust as needed)
+        accommodation_cost = round(booking.total_price * Decimal('0.85'), 2)  # 85% of total is accommodation
+        taxes = round(booking.total_price - accommodation_cost, 2)
+        
+        # Format dates
+        from datetime import datetime
+        
+        def format_date_with_ordinal(dt):
+            """Format date with ordinal suffix (1st, 2nd, 3rd, etc.)"""
+            day = dt.day
+            suffix = 'th' if 11 <= day <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+            return dt.strftime(f"%B {day}{suffix} %Y")
+        
+        checkin_date = format_date_with_ordinal(booking.check_in_date)
+        checkout_date = format_date_with_ordinal(booking.check_out_date)
+        
+        # Format payment date
+        if booking.payment_date:
+            if isinstance(booking.payment_date, datetime):
+                payment_date = format_date_with_ordinal(booking.payment_date.date())
+            else:
+                payment_date = format_date_with_ordinal(booking.payment_date)
+        else:
+            payment_date = format_date_with_ordinal(datetime.now().date())
+        
+        # Get property info
+        property_name = booking.property.title
+        property_address = f"{booking.property.address}, {booking.property.city}, {booking.property.state}, {booking.property.country}"
+        
+        # Get reply_to_email from environment
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        reply_to_email = os.environ.get('REPLY_TO_EMAIL', 'olivierkarera2020@gmail.com')
+        
+        # Create custom response
+        return {
+            'first_name': first_name,
+            'property_name': property_name,
+            'property_address': property_address,
+            'property_id': booking.property.id,
+            'checkin_date': checkin_date,
+            'checkout_date': checkout_date,
+            'guest_count': booking.guests,
+            'guest_email': booking.guest_email,
+            'booking_id': booking.id,
+            'nights': nights,
+            'accommodation_cost': accommodation_cost,
+            'taxes': taxes,
+            'total_amount': booking.total_price,
+            'payment_method': "VISA card" if booking.is_paid else "Not paid",
+            'payment_date': payment_date,
+            'reply_to_email': reply_to_email,
+            'current_year': datetime.now().year
+        }

@@ -110,3 +110,24 @@ class BookingSummarySchema(Schema):
 
 class PaginatedBookingResponse(PaginatedResponse):
     items: List[BookingSummarySchema]
+
+
+# Custom response schema for guest booking access
+class GuestBookingConfirmationSchema(Schema):
+    first_name: str
+    property_name: str
+    property_address: str
+    property_id: int
+    checkin_date: str
+    checkout_date: str
+    guest_count: int
+    guest_email: str
+    booking_id: int
+    nights: int
+    accommodation_cost: Decimal
+    taxes: Decimal
+    total_amount: Decimal
+    payment_method: str
+    payment_date: str
+    reply_to_email: str
+    current_year: int

@@ -10,6 +10,7 @@ from .schemas import (
     BookingCreateSchema,
     GuestBookingCreateSchema,
     GuestBookingAccessSchema,
+    GuestBookingConfirmationSchema,
     BookingUpdateSchema,
     BookingReviewCreateSchema,
     BookingFilterSchema,
@@ -211,12 +212,12 @@ class BookingController:
                 return 404, {"message": str(e)}
             return 400, {"message": str(e)}
 
-    @route.post("/{booking_id}/guest-access", auth=None, response={200: BookingDetailSchema, 400: MessageResponse, 404: MessageResponse})
+    @route.post("/{booking_id}/guest-access", auth=None, response={200: GuestBookingConfirmationSchema, 400: MessageResponse, 404: MessageResponse})
     @rate_limit(key_prefix="guest_booking_access", limit=100, period=3600)  # 20 guest accesses per hour
     def get_guest_booking(self, request: HttpRequest, booking_id: int, data: GuestBookingAccessSchema):
         """Get a booking by ID for non-authenticated users using email verification"""
         try:
-            booking = self.booking_service.get_booking_by_email(booking_id, data.guest_email)
+            booking = self.booking_service.get_guest_booking_confirmation(booking_id, data.guest_email)
             if not booking:
                 return 404, {"message": f"Booking with ID {booking_id} not found or email doesn't match"}
             
